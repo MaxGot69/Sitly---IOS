@@ -20,12 +20,14 @@ This repository contains a **prototype version** of the iOS client. The app is c
   - Static list of restaurants with rating, cuisine, and address
 
  🔍 Screenshots
-
  Welcome Screen
-![Welcome](./Assets/welcome.png)
+
+![welcome](https://github.com/user-attachments/assets/c9feb31e-7b69-47b7-bd9c-583d1f294693)
+
 
  Restaurant List
-![Restaurant List](./Assets/restaurant-list.png)
+
+![restaurant-list](https://github.com/user-attachments/assets/b7cdef4e-dd57-4266-9c0b-4fa1637040f9)
 
  🧱 Tech Stack
 
