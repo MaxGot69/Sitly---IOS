@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0C5E928D2E12909C00F8B21F /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0C5E928C2E12909C00F8B21F /* MapKit.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		0C5E91042E0ACFBA00F8B21F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		0C5E90F52E0ACFB800F8B21F /* Sitly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sitly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C5E91032E0ACFBA00F8B21F /* SitlyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SitlyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C5E910D2E0ACFBA00F8B21F /* SitlyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SitlyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0C5E928C2E12909C00F8B21F /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/MapKit.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0C5E928D2E12909C00F8B21F /* MapKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +84,7 @@
 				0C5E90F72E0ACFB800F8B21F /* Sitly */,
 				0C5E91062E0ACFBA00F8B21F /* SitlyTests */,
 				0C5E91102E0ACFBA00F8B21F /* SitlyUITests */,
+				0C5E928B2E12909B00F8B21F /* Frameworks */,
 				0C5E90F62E0ACFB800F8B21F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +97,14 @@
 				0C5E910D2E0ACFBA00F8B21F /* SitlyUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0C5E928B2E12909B00F8B21F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0C5E928C2E12909C00F8B21F /* MapKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
