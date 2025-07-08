@@ -22,10 +22,10 @@ This repository contains a **prototype version** of the iOS client. The app is c
  🔍 Screenshots
 
  Welcome Screen
-![Welcome](./welcome.png)
+![Welcome](./Assets/welcome.png)
 
  Restaurant List
-![Restaurant List](./restaurant-list.png)
+![Restaurant List](./Assets/restaurant-list.png)
 
  🧱 Tech Stack
 
