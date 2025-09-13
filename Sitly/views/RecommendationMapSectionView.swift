@@ -23,9 +23,7 @@ struct RecommendationMapSectionView: View {
             
             HStack{
                 Map(coordinateRegion: $region, annotationItems: [recommendedRestaurant]) { restaurant in
-                    MapMarker(coordinate: CLLocationCoordinate2D(latitude: restaurant.latitude,
-                                                                 longitude: restaurant.longitude),
-                              tint: .red)
+                    MapMarker(coordinate: restaurant.coordinates, tint: .red)
                 }
                 .frame(width: 140, height: 100)
                 .cornerRadius(12)
