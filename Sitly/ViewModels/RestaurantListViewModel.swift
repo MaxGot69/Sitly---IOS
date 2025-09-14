@@ -39,7 +39,7 @@ final class RestaurantListViewModel: ObservableObject {
     }
     
     // MARK: - Initialization
-    init(restaurantUseCase: RestaurantUseCaseProtocol, locationUseCase: LocationUseCaseProtocol, aiService: AIServiceProtocol = MockAIService()) {
+    init(restaurantUseCase: RestaurantUseCaseProtocol, locationUseCase: LocationUseCaseProtocol, aiService: AIServiceProtocol = AIService()) {
         self.restaurantUseCase = restaurantUseCase
         self.locationUseCase = locationUseCase
         self.aiService = aiService
@@ -157,12 +157,9 @@ final class RestaurantListViewModel: ObservableObject {
             // Получаем AI рекомендации (пока используем MockAIService)
             let recommendedRestaurants = try await aiService.getPersonalizedRecommendations(for: demoUser, preferences: preferences)
             
-            // Если AI сервис вернул пустой массив, используем топ рестораны
-            if recommendedRestaurants.isEmpty {
-                aiRecommendations = Array(restaurants.sorted { $0.rating > $1.rating }.prefix(3))
-            } else {
-                aiRecommendations = recommendedRestaurants
-            }
+            // AI возвращает строку с рекомендациями, пока используем топ рестораны
+            print("🤖 AI рекомендации: \(recommendedRestaurants)")
+            aiRecommendations = Array(restaurants.sorted { $0.rating > $1.rating }.prefix(3))
         } catch {
             print("❌ Ошибка загрузки AI рекомендаций: \(error)")
             // Fallback: показываем топ рестораны по рейтингу

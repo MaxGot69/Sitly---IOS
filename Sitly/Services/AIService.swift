@@ -1,457 +1,244 @@
+//
+//  AIService.swift
+//  Sitly
+//
+//  Created by Maxim Gotovchenko on 14.09.2025.
+//
+
 import Foundation
-import Combine
+import FirebaseAI
 
 // MARK: - AI Service Protocol
 protocol AIServiceProtocol {
-    func getPersonalizedRecommendations(for user: User, preferences: UserPreferences) async throws -> [Restaurant]
-    func analyzeReviewSentiment(_ review: String) async throws -> ReviewSentiment
-    func generateRestaurantDescription(name: String, cuisine: CuisineType, features: [RestaurantFeature]) async throws -> String
-    func getWineRecommendations(for dish: String, cuisine: CuisineType) async throws -> [WineRecommendation]
-    func predictBookingCancellation(booking: BookingModel, userHistory: [BookingModel]) async throws -> CancellationPrediction
-    func optimizeTableAllocation(restaurant: Restaurant, bookings: [BookingModel]) async throws -> TableAllocationOptimization
-    func generatePersonalizedMenu(for user: User, restaurant: Restaurant) async throws -> [MenuItem]
-    func chatWithAssistant(message: String, context: ChatContext) async throws -> String
+    func generateResponse(prompt: String) async throws -> String
+    func generateRestaurantRecommendations(userPreferences: String) async throws -> String
+    func generateMenuRecommendations(restaurantType: String) async throws -> String
+    func analyzeReview(reviewText: String) async throws -> String
+    func generateBookingConfirmation(bookingDetails: String) async throws -> String
+    func predictCancellation(bookingData: String) async throws -> String
+    func optimizeTableAllocation(bookings: String) async throws -> String
+    func getPersonalizedRecommendations(for user: User, preferences: UserPreferences) async throws -> String
 }
 
 // MARK: - AI Service Implementation
 class AIService: AIServiceProtocol {
-    private let openAIAPIKey: String
-    private let baseURL = "https://api.openai.com/v1/chat/completions"
-    private let model = "gpt-3.5-turbo"
+    private let ai: FirebaseAI
+    private let model: GenerativeModel
     
-    init(apiKey: String) {
-        self.openAIAPIKey = apiKey
+    init() {
+        print("🤖 AIService: Инициализация с Gemini")
+        self.ai = FirebaseAI.firebaseAI(backend: .googleAI())
+        self.model = ai.generativeModel(modelName: "gemini-2.5-flash")
+        print("✅ AIService: Gemini модель загружена")
     }
     
-    // MARK: - Personalized Recommendations
-    func getPersonalizedRecommendations(for user: User, preferences: UserPreferences) async throws -> [Restaurant] {
-        let prompt = """
-        Пользователь: \(user.name)
-        Предпочтения по кухне: \(preferences.cuisineTypes.joined(separator: ", "))
-        Ценовой диапазон: \(preferences.priceRange.displayName)
-        Максимальное расстояние: \(preferences.maxDistance) км
-        Диетические ограничения: \(preferences.dietaryRestrictions.map { $0.displayName }.joined(separator: ", "))
+    // MARK: - Main Response Generation
+    func generateResponse(prompt: String) async throws -> String {
+        print("🤖 AIService: Генерация ответа для: \(prompt)")
         
-        Предложи 5 ресторанов, которые идеально подходят этому пользователю. 
-        Учитывай его предпочтения, историю посещений и текущие тренды.
-        """
-        
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        // Здесь будет логика парсинга ответа и поиска ресторанов
-        return []
+        do {
+            let response = try await model.generateContent(prompt)
+            let result = response.text ?? "Извините, не удалось сгенерировать ответ"
+            print("✅ AIService: Ответ сгенерирован успешно")
+            return result
+        } catch {
+            print("❌ AIService: Ошибка генерации: \(error)")
+            throw AIServiceError.generationFailed(error.localizedDescription)
+        }
     }
     
-    // MARK: - Review Sentiment Analysis
-    func analyzeReviewSentiment(_ review: String) async throws -> ReviewSentiment {
+    // MARK: - Restaurant Recommendations
+    func generateRestaurantRecommendations(userPreferences: String) async throws -> String {
         let prompt = """
-        Проанализируй тональность отзыва о ресторане:
+        Как AI-помощник ресторана, предложите персонализированные рекомендации на основе предпочтений пользователя: "\(userPreferences)".
         
-        Отзыв: "\(review)"
+        Включите:
+        - Рекомендуемые блюда
+        - Подходящее время для посещения
+        - Особые предложения
+        - Советы по бронированию
         
-        Определи:
-        1. Общую тональность (позитивная/нейтральная/негативная)
-        2. Эмоции (радость, разочарование, восторг, гнев)
-        3. Ключевые аспекты (еда, сервис, атмосфера, цены)
-        4. Оценку по шкале 1-10
+        Ответьте на русском языке в дружелюбном тоне.
         """
         
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        // Парсинг ответа и создание ReviewSentiment
-        return ReviewSentiment(
-            overallSentiment: .positive,
-            score: 8.5,
-            emotions: [.joy, .satisfaction],
-            keyAspects: [.food, .service],
-            confidence: 0.92
-        )
+        return try await generateResponse(prompt: prompt)
     }
     
-    // MARK: - Restaurant Description Generation
-    func generateRestaurantDescription(name: String, cuisine: CuisineType, features: [RestaurantFeature]) async throws -> String {
+    // MARK: - Menu Recommendations
+    func generateMenuRecommendations(restaurantType: String) async throws -> String {
         let prompt = """
-        Создай привлекательное описание ресторана для мобильного приложения:
+        Как AI-помощник, предложите рекомендации по меню для \(restaurantType) ресторана.
         
-        Название: \(name)
-        Кухня: \(cuisine.displayName)
-        Особенности: \(features.map { $0.displayName }.joined(separator: ", "))
+        Включите:
+        - Популярные блюда для этого типа ресторана
+        - Сезонные рекомендации
+        - Сочетания блюд и напитков
+        - Советы по ценообразованию
         
-        Описание должно быть:
-        - Кратким (2-3 предложения)
-        - Привлекательным для клиентов
-        - Подчеркивать уникальность
-        - Включать эмоциональные триггеры
+        Ответьте на русском языке в профессиональном тоне.
         """
         
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        return "Описание ресторана обновлено с помощью AI"
+        return try await generateResponse(prompt: prompt)
     }
     
-    // MARK: - Wine Recommendations
-    func getWineRecommendations(for dish: String, cuisine: CuisineType) async throws -> [WineRecommendation] {
+    // MARK: - Review Analysis
+    func analyzeReview(reviewText: String) async throws -> String {
         let prompt = """
-        Предложи идеальные сочетания вин для блюда:
+        Проанализируйте отзыв о ресторане: "\(reviewText)"
         
-        Блюдо: \(dish)
-        Кухня: \(cuisine.displayName)
+        Определите:
+        - Общий тон отзыва (позитивный/негативный/нейтральный)
+        - Основные моменты (еда, сервис, атмосфера, цена)
+        - Рекомендации для улучшения
+        - Предложение ответа владельца ресторана
         
-        Предложи 3-5 вариантов вин с указанием:
-        - Названия вина
-        - Региона производства
-        - Года (если важно)
-        - Причины сочетания
-        - Примерной цены
+        Ответьте на русском языке в структурированном виде.
         """
         
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        // Парсинг и создание WineRecommendation
-        return []
+        return try await generateResponse(prompt: prompt)
     }
     
-    // MARK: - Booking Cancellation Prediction
-    func predictBookingCancellation(booking: BookingModel, userHistory: [BookingModel]) async throws -> CancellationPrediction {
+    // MARK: - Booking Confirmation
+    func generateBookingConfirmation(bookingDetails: String) async throws -> String {
         let prompt = """
-        Предскажи вероятность отмены бронирования:
+        Создайте подтверждение бронирования на основе деталей: "\(bookingDetails)"
         
-        Текущее бронирование:
-        - Время: \(booking.date) \(booking.timeSlot)
-        - Гости: \(booking.guests)
-        - Ресторан: \(booking.restaurantId)
+        Включите:
+        - Приветственное сообщение
+        - Подтверждение деталей бронирования
+        - Полезную информацию для гостя
+        - Контактную информацию
         
-        История пользователя:
-        - Всего бронирований: \(userHistory.count)
-        - Отмен: \(userHistory.filter { $0.status == .cancelled }.count)
-        - Время отмен: \(userHistory.filter { $0.status == .cancelled }.count)
-        
-        Оцени вероятность отмены (0-100%) и предложи стратегии снижения риска.
+        Ответьте на русском языке в дружелюбном тоне.
         """
         
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        return CancellationPrediction(
-            probability: 0.15,
-            riskLevel: .low,
-            recommendations: [
-                "Отправить напоминание за 2 часа",
-                "Предложить скидку при подтверждении"
-            ]
-        )
+        return try await generateResponse(prompt: prompt)
+    }
+    
+    // MARK: - Cancellation Prediction
+    func predictCancellation(bookingData: String) async throws -> String {
+        let prompt = """
+        Проанализируйте вероятность отмены бронирования на основе данных: "\(bookingData)"
+        
+        Оцените:
+        - Вероятность отмены (высокая/средняя/низкая)
+        - Факторы риска
+        - Рекомендации по предотвращению отмены
+        - Стратегии удержания клиента
+        
+        Ответьте на русском языке в аналитическом тоне.
+        """
+        
+        return try await generateResponse(prompt: prompt)
     }
     
     // MARK: - Table Allocation Optimization
-    func optimizeTableAllocation(restaurant: Restaurant, bookings: [BookingModel]) async throws -> TableAllocationOptimization {
+    func optimizeTableAllocation(bookings: String) async throws -> String {
         let prompt = """
-        Оптимизируй распределение столиков в ресторане:
+        Оптимизируйте распределение столиков на основе бронирований: "\(bookings)"
         
-        Ресторан: \(restaurant.name)
-        Доступные столики: \(restaurant.tables.count)
-        Активные брони: \(bookings.count)
+        Предложите:
+        - Оптимальное распределение столиков
+        - Учет предпочтений гостей
+        - Максимизацию загрузки ресторана
+        - Решение конфликтов в расписании
         
-        Цели оптимизации:
-        1. Максимизировать загруженность
-        2. Минимизировать время ожидания
-        3. Учесть предпочтения гостей
-        4. Оптимизировать работу персонала
-        
-        Предложи оптимальное распределение и график работы.
+        Ответьте на русском языке в структурированном виде.
         """
         
-        let response = try await makeOpenAIRequest(prompt: prompt)
-        return TableAllocationOptimization(
-            optimizedAllocations: [],
-            efficiencyScore: 0.87,
-            recommendations: [
-                "Переместить VIP-столики ближе к окну",
-                "Оптимизировать график работы официантов"
-            ]
-        )
+        return try await generateResponse(prompt: prompt)
     }
     
-    // MARK: - Personalized Menu Generation
-    func generatePersonalizedMenu(for user: User, restaurant: Restaurant) async throws -> [MenuItem] {
+    // MARK: - Personalized Recommendations
+    func getPersonalizedRecommendations(for user: User, preferences: UserPreferences) async throws -> String {
         let prompt = """
-        Создай персонализированное меню для пользователя:
+        Создайте персонализированные рекомендации ресторанов для пользователя \(user.name).
         
-        Пользователь: \(user.name)
-        Предпочтения: \(user.preferences?.cuisineTypes.joined(separator: ", ") ?? "Не указаны")
-        Диетические ограничения: \(user.preferences?.dietaryRestrictions.map { $0.displayName }.joined(separator: ", ") ?? "Нет")
+        Предпочтения: \(preferences)
         
-        Ресторан: \(restaurant.name)
-        Доступные блюда: \(restaurant.menu.categories.flatMap { $0.items }.count)
+        Включите:
+        - Рекомендуемые рестораны
+        - Обоснование выбора
+        - Особые предложения
+        - Советы по бронированию
         
-        Выбери 10-15 блюд, которые идеально подходят пользователю.
-        Учитывай его предпочтения, ограничения и популярность блюд.
+        Ответьте на русском языке в дружелюбном тоне.
         """
         
-        _ = try await makeOpenAIRequest(prompt: prompt)
-        // Парсинг и создание персонализированного меню
-        return []
-    }
-    
-    // MARK: - AI Assistant Chat
-    func chatWithAssistant(message: String, context: ChatContext) async throws -> String {
-        let prompt = """
-        Контекст чата: \(context.description)
-        
-        Сообщение пользователя: \(message)
-        
-        Ответь как персональный помощник по ресторанам. Будь дружелюбным, полезным и профессиональным.
-        Предлагай конкретные рестораны, блюда и советы.
-        """
-        
-        return try await makeOpenAIRequest(prompt: prompt)
-    }
-    
-    // MARK: - OpenAI API Request
-    private func makeOpenAIRequest(prompt: String) async throws -> String {
-        guard let url = URL(string: baseURL) else {
-            throw AIServiceError.invalidURL
-        }
-        
-        let requestBody = OpenAIRequest(
-            model: model,
-            messages: [
-                Message(role: "system", content: "Ты эксперт по ресторанам и гастрономии. Помогаешь пользователям находить идеальные места для ужина."),
-                Message(role: "user", content: prompt)
-            ],
-            maxTokens: 1000,
-            temperature: 0.7
-        )
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(openAIAPIKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(requestBody)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw AIServiceError.apiError
-        }
-        
-        let openAIResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
-        return openAIResponse.choices.first?.message.content ?? "Извините, не удалось получить ответ"
+        return try await generateResponse(prompt: prompt)
     }
 }
 
-// MARK: - Supporting Models
-struct ReviewSentiment {
-    let overallSentiment: SentimentType
-    let score: Double
-    let emotions: [Emotion]
-    let keyAspects: [ReviewAspect]
-    let confidence: Double
-}
-
-enum SentimentType: String, CaseIterable {
-    case positive = "positive"
-    case neutral = "neutral"
-    case negative = "negative"
+// MARK: - AI Service Error
+enum AIServiceError: Error, LocalizedError {
+    case generationFailed(String)
+    case invalidPrompt
+    case networkError
+    case quotaExceeded
     
-    var displayName: String {
+    var errorDescription: String? {
         switch self {
-        case .positive: return "Позитивная"
-        case .neutral: return "Нейтральная"
-        case .negative: return "Негативная"
+        case .generationFailed(let message):
+            return "Ошибка генерации: \(message)"
+        case .invalidPrompt:
+            return "Неверный запрос"
+        case .networkError:
+            return "Ошибка сети"
+        case .quotaExceeded:
+            return "Превышена квота запросов"
         }
     }
 }
 
-enum Emotion: String, CaseIterable {
-    case joy = "joy"
-    case satisfaction = "satisfaction"
-    case disappointment = "disappointment"
-    case anger = "anger"
-    case surprise = "surprise"
-    
-    var displayName: String {
-        switch self {
-        case .joy: return "Радость"
-        case .satisfaction: return "Удовлетворение"
-        case .disappointment: return "Разочарование"
-        case .anger: return "Гнев"
-        case .surprise: return "Удивление"
-        }
-    }
-}
-
-enum ReviewAspect: String, CaseIterable {
-    case food = "food"
-    case service = "service"
-    case atmosphere = "atmosphere"
-    case prices = "prices"
-    case location = "location"
-    
-    var displayName: String {
-        switch self {
-        case .food: return "Еда"
-        case .service: return "Сервис"
-        case .atmosphere: return "Атмосфера"
-        case .prices: return "Цены"
-        case .location: return "Расположение"
-        }
-    }
-}
-
-struct WineRecommendation {
-    let name: String
-    let region: String
-    let year: Int?
-    let reason: String
-    let price: String
-}
-
+// MARK: - AI Models
 struct CancellationPrediction {
     let probability: Double
-    let riskLevel: RiskLevel
-    let recommendations: [String]
-}
-
-enum RiskLevel: String, CaseIterable {
-    case low = "low"
-    case medium = "medium"
-    case high = "high"
-    
-    var displayName: String {
-        switch self {
-        case .low: return "Низкий"
-        case .medium: return "Средний"
-        case .high: return "Высокий"
-        }
-    }
-}
-
-struct TableAllocationOptimization {
-    let optimizedAllocations: [TableAllocation]
-    let efficiencyScore: Double
+    let riskFactors: [String]
     let recommendations: [String]
 }
 
 struct TableAllocation {
     let tableId: String
-    let bookingId: String
-    let startTime: Date
-    let endTime: Date
-    let efficiency: Double
+    let guestId: String
+    let timeSlot: String
+    let priority: Int
 }
 
-struct ChatContext {
-    let userId: String
-    let currentRestaurant: Restaurant?
-    let recentSearches: [String]
-    let preferences: UserPreferences?
+// MARK: - Sentiment Analysis
+enum SentimentType: String, CaseIterable {
+    case positive = "positive"
+    case negative = "negative"
+    case neutral = "neutral"
     
-    var description: String {
-        var context = "Пользователь ID: \(userId)"
-        if let restaurant = currentRestaurant {
-            context += "\nТекущий ресторан: \(restaurant.name)"
-        }
-        if let prefs = preferences {
-            context += "\nПредпочтения: \(prefs.cuisineTypes.joined(separator: ", "))"
-        }
-        if !recentSearches.isEmpty {
-            context += "\nНедавние поиски: \(recentSearches.joined(separator: ", "))"
-        }
-        return context
-    }
-}
-
-// MARK: - OpenAI API Models
-struct OpenAIRequest: Codable {
-    let model: String
-    let messages: [Message]
-    let maxTokens: Int
-    let temperature: Double
-    
-    enum CodingKeys: String, CodingKey {
-        case model, messages
-        case maxTokens = "max_tokens"
-        case temperature
-    }
-}
-
-struct Message: Codable {
-    let role: String
-    let content: String
-}
-
-struct OpenAIResponse: Codable {
-    let choices: [Choice]
-}
-
-struct Choice: Codable {
-    let message: Message
-}
-
-// MARK: - AI Service Errors
-enum AIServiceError: Error, LocalizedError {
-    case invalidURL
-    case apiError
-    case invalidResponse
-    case rateLimitExceeded
-    
-    var errorDescription: String? {
+    var displayName: String {
         switch self {
-        case .invalidURL:
-            return "Неверный URL для AI сервиса"
-        case .apiError:
-            return "Ошибка API AI сервиса"
-        case .invalidResponse:
-            return "Неверный ответ от AI сервиса"
-        case .rateLimitExceeded:
-            return "Превышен лимит запросов к AI сервису"
+        case .positive: return "Позитивный"
+        case .negative: return "Негативный"
+        case .neutral: return "Нейтральный"
         }
     }
 }
 
-// MARK: - Mock AI Service for Development
-class MockAIService: AIServiceProtocol {
-    func getPersonalizedRecommendations(for user: User, preferences: UserPreferences) async throws -> [Restaurant] {
-        // Возвращаем моковые рекомендации
-        return []
-    }
-    
-    func analyzeReviewSentiment(_ review: String) async throws -> ReviewSentiment {
-        return ReviewSentiment(
-            overallSentiment: .positive,
-            score: 8.5,
-            emotions: [.joy, .satisfaction],
-            keyAspects: [.food, .service],
-            confidence: 0.92
-        )
-    }
-    
-    func generateRestaurantDescription(name: String, cuisine: CuisineType, features: [RestaurantFeature]) async throws -> String {
-        return "Уютный ресторан \(name) предлагает изысканные блюда \(cuisine.displayName.lowercased()) кухни. \(features.first?.displayName ?? "") создает неповторимую атмосферу для незабываемого ужина."
-    }
-    
-    func getWineRecommendations(for dish: String, cuisine: CuisineType) async throws -> [WineRecommendation] {
-        return [
-            WineRecommendation(name: "Château Margaux", region: "Бордо, Франция", year: 2015, reason: "Идеально сочетается с \(dish)", price: "₽15,000")
-        ]
-    }
-    
-    func predictBookingCancellation(booking: BookingModel, userHistory: [BookingModel]) async throws -> CancellationPrediction {
-        return CancellationPrediction(
-            probability: 0.15,
-            riskLevel: .low,
-            recommendations: ["Отправить напоминание за 2 часа"]
-        )
-    }
-    
-    func optimizeTableAllocation(restaurant: Restaurant, bookings: [BookingModel]) async throws -> TableAllocationOptimization {
-        return TableAllocationOptimization(
-            optimizedAllocations: [],
-            efficiencyScore: 0.87,
-            recommendations: ["Оптимизировать график работы официантов"]
-        )
-    }
-    
-    func generatePersonalizedMenu(for user: User, restaurant: Restaurant) async throws -> [MenuItem] {
-        return []
-    }
-    
+// MARK: - Chat Context
+struct ChatContext {
+    let currentRestaurant: Restaurant?
+    let userPreferences: [String: Any]?
+    let preferences: [String: Any]?
+}
+
+// MARK: - AI Service Protocol Extension
+extension AIServiceProtocol {
     func chatWithAssistant(message: String, context: ChatContext) async throws -> String {
-        return "Привет! Я ваш персональный помощник по ресторанам. Чем могу помочь?"
+        let prompt = """
+        Как AI-помощник ресторана, ответьте на вопрос: "\(message)"
+        
+        Контекст:
+        - Ресторан: \(context.currentRestaurant?.name ?? "Не указан")
+        - Предпочтения пользователя: \(context.userPreferences?.description ?? "Не указаны")
+        
+        Ответьте на русском языке в дружелюбном тоне, как профессиональный помощник ресторана.
+        """
+        
+        return try await generateResponse(prompt: prompt)
     }
 }

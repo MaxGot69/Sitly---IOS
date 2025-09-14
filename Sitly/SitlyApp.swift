@@ -16,7 +16,9 @@ struct SitlyApp: App {
     )
     
     init() {
+        print("🚀 SitlyApp: ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ")
         FirebaseApp.configure()
+        print("🔥 Firebase: НАСТРОЕН")
     }
     
     var body: some Scene {

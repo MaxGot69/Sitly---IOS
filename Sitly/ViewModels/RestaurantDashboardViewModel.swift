@@ -34,7 +34,7 @@ class RestaurantDashboardViewModel: ObservableObject {
     // MARK: - Initialization
     init(restaurantRepository: RestaurantRepositoryProtocol = RestaurantRepository(networkService: NetworkService(), storageService: StorageService(), cacheService: CacheService(storageService: StorageService())),
          bookingRepository: BookingRepositoryProtocol = BookingRepository(networkService: NetworkService(), storageService: StorageService()),
-         aiService: AIServiceProtocol = MockAIService(),
+         aiService: AIServiceProtocol = AIService(),
          userRepository: UserRepositoryProtocol = UserRepository(networkService: NetworkService(), storageService: StorageService()),
          notificationService: NotificationServiceProtocol = NotificationService.shared,
          analyticsService: AnalyticsServiceProtocol = AnalyticsService.shared) {

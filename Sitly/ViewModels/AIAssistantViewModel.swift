@@ -19,7 +19,7 @@ class AIAssistantViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
-    init(aiService: AIServiceProtocol = MockAIService(),
+    init(aiService: AIServiceProtocol = AIService(),
          restaurantRepository: RestaurantRepositoryProtocol = RestaurantRepository(networkService: NetworkService(), storageService: StorageService(), cacheService: CacheService(storageService: StorageService()))) {
         self.aiService = aiService
         self.restaurantRepository = restaurantRepository
@@ -118,9 +118,8 @@ class AIAssistantViewModel: ObservableObject {
     private func processMessage(_ content: String) async throws -> String {
         // Создаем контекст для AI
         let context = ChatContext(
-            userId: "current_user_id",
             currentRestaurant: nil, // Будет загружен из AppState
-            recentSearches: extractRecentSearches(),
+            userPreferences: nil, // Будет загружен из AppState
             preferences: nil // Будет загружен из AppState
         )
         

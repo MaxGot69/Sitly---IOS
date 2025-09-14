@@ -485,15 +485,10 @@ private class MockUserUseCase: UserUseCaseProtocol {
         }
     }
     
-    /// Умный выбор AIService: Demo моки или реальный OpenAI
+    /// Умный выбор AIService: Реальный Gemini AI
     func getAIService() -> AIServiceProtocol {
-        if let apiKey = APIKeys.openAI {
-            print("🤖 DI: AIService - реальный OpenAI")
-            return AIService(apiKey: apiKey)
-        } else {
-            print("🎭 DI: AIService - режим DEMO (API ключ не найден)")
-            return MockAIService()
-        }
+        print("🤖 DI: AIService - реальный Gemini AI")
+        return AIService()
     }
 }
 

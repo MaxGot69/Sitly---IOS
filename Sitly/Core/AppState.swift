@@ -60,20 +60,26 @@ final class AppState: ObservableObject {
         setupAuthStateListener()
         
         // Проверяем состояние при запуске
+        print("🔥 Firebase: Проверяем подключение...")
+        print("🔥 Firebase Auth: \(Auth.auth().app?.name ?? "НЕ ПОДКЛЮЧЕН")")
+        print("🔥 Firebase Firestore: \(Firestore.firestore().app.name)")
         checkAuthenticationStatus()
     }
     
     // MARK: - Public Methods
     
     func checkAuthenticationStatus() {
+        print("🔍 AppState: checkAuthenticationStatus вызван")
         Task { @MainActor in
             self.isLoading = true
         }
         
         Task {
             do {
+                print("🔍 AppState: Проверяем Firebase Auth...")
                 // Проверяем есть ли активная сессия Firebase Auth
                 if Auth.auth().currentUser != nil {
+                    print("✅ AppState: Пользователь авторизован: \(Auth.auth().currentUser?.uid ?? "НЕТ UID")")
                     // Есть активная сессия, загружаем профиль
                     let user = try await userUseCase.getUserProfile()
                     await MainActor.run {
@@ -81,6 +87,7 @@ final class AppState: ObservableObject {
                         self.isAuthenticated = true
                     }
                 } else {
+                    print("❌ AppState: Нет активной сессии")
                     // Нет активной сессии
                     await MainActor.run {
                         self.isAuthenticated = false
