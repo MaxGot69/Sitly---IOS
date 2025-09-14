@@ -43,7 +43,7 @@ class BookingsViewModel: ObservableObject {
     // MARK: - Initialization
     init(restaurantId: String = "demo-restaurant", bookingsService: BookingsServiceProtocol? = nil) {
         self.restaurantId = restaurantId
-        self.bookingsService = bookingsService ?? MockBookingsService() // Используем Mock для разработки
+        self.bookingsService = bookingsService ?? BookingsService()
         
         setupRealTimeObserver()
         Task {

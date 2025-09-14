@@ -1,15 +1,17 @@
 import SwiftUI
+import Combine
 
 struct BookingHistoryView: View {
     @StateObject private var viewModel: BookingHistoryViewModel
     @State private var animateContent = false
-    @State private var selectedFilter: BookingFilter = .all
     
     init() {
         let container = DependencyContainer.shared
+        let bookingsService = BookingsService()
         self._viewModel = StateObject(wrappedValue: BookingHistoryViewModel(
             bookingUseCase: container.bookingUseCase,
-            restaurantUseCase: container.restaurantUseCase
+            restaurantUseCase: container.restaurantUseCase,
+            bookingsService: bookingsService
         ))
     }
     
@@ -116,9 +118,9 @@ struct BookingHistoryView: View {
                 ForEach(BookingFilter.allCases, id: \.self) { filter in
                     FilterChip(
                         title: filter.displayName,
-                        isSelected: selectedFilter == filter,
+                        isSelected: viewModel.selectedFilter == filter,
                         action: {
-                            selectedFilter = filter
+                            viewModel.selectedFilter = filter
                             viewModel.filterBookingModels(by: filter)
                         }
                     )
@@ -157,12 +159,12 @@ struct BookingHistoryView: View {
                 )
             
             VStack(spacing: 12) {
-                Text(selectedFilter == .all ? "Пока нет бронирований" : "Нет бронирований в этой категории")
+                Text(viewModel.selectedFilter == .all ? "Пока нет бронирований" : "Нет бронирований в этой категории")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                 
-                Text(selectedFilter == .all ? 
+                Text(viewModel.selectedFilter == .all ? 
                      "Найдите идеальный ресторан и забронируйте столик" :
                      "Попробуйте изменить фильтр или создать новое бронирование")
                     .font(.system(size: 16, weight: .medium))
@@ -171,7 +173,7 @@ struct BookingHistoryView: View {
                     .padding(.horizontal, 40)
             }
             
-            if selectedFilter == .all {
+            if viewModel.selectedFilter == .all {
                 Button("Найти ресторан") {
                     // Навигация к списку ресторанов
                 }
@@ -498,14 +500,70 @@ class BookingHistoryViewModel: ObservableObject {
     @Published var filteredBookingModels: [BookingModel] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var selectedFilter: BookingFilter = .all
     
     private let bookingUseCase: BookingUseCaseProtocol
     private let restaurantUseCase: RestaurantUseCaseProtocol
+    private let bookingsService: BookingsServiceProtocol
     private var restaurants: [Restaurant] = []
+    private var cancellables = Set<AnyCancellable>()
     
-    init(bookingUseCase: BookingUseCaseProtocol, restaurantUseCase: RestaurantUseCaseProtocol) {
+    init(bookingUseCase: BookingUseCaseProtocol, 
+         restaurantUseCase: RestaurantUseCaseProtocol,
+         bookingsService: BookingsServiceProtocol = BookingsService()) {
         self.bookingUseCase = bookingUseCase
         self.restaurantUseCase = restaurantUseCase
+        self.bookingsService = bookingsService
+        
+        setupBindings()
+    }
+    
+    // MARK: - Private Methods
+    private func setupBindings() {
+        // Подписываемся на изменения бронирований в реальном времени
+        setupRealtimeBookings()
+        
+        // Загружаем начальные данные
+        Task {
+            await loadBookingModels()
+        }
+    }
+    
+    private func setupRealtimeBookings() {
+        // Подписываемся на изменения бронирований для всех ресторанов
+        for restaurant in restaurants {
+            bookingsService.observeBookings(for: restaurant.id)
+                .receive(on: DispatchQueue.main)
+                .sink(
+                    receiveCompletion: { [weak self] completion in
+                        if case .failure(let error) = completion {
+                            self?.errorMessage = "Ошибка синхронизации: \(error.localizedDescription)"
+                        }
+                    },
+                    receiveValue: { [weak self] restaurantBookings in
+                        self?.updateBookingsFromRealtime(restaurantBookings, restaurantId: restaurant.id)
+                    }
+                )
+                .store(in: &cancellables)
+        }
+    }
+    
+    private func updateBookingsFromRealtime(_ restaurantBookings: [BookingModel], restaurantId: String) {
+        // Фильтруем только бронирования текущего пользователя
+        let userId = "demo-client" // В реальном приложении здесь был бы ID текущего пользователя
+        let userBookings = restaurantBookings.filter { $0.clientId == userId }
+        
+        // Обновляем список бронирований
+        var updatedBookings = bookings.filter { $0.restaurantId != restaurantId }
+        updatedBookings.append(contentsOf: userBookings)
+        
+        // Сортируем по дате
+        bookings = updatedBookings.sorted { $0.date > $1.date }
+        
+        // Применяем текущий фильтр
+        filterBookingModels(by: selectedFilter)
+        
+        print("🔄 Обновлены бронирования в реальном времени: \(userBookings.count) новых")
     }
     
     func loadBookingModels() async {
@@ -516,15 +574,38 @@ class BookingHistoryViewModel: ObservableObject {
             // Загружаем рестораны для отображения названий
             restaurants = try await restaurantUseCase.getRestaurants()
             
-            // Здесь будет загрузка реальных бронирований
-            // Пока используем демо данные
-            bookings = getMockBookingModels()
+            // Загружаем реальные бронирования для текущего пользователя
+            // Пока используем демо-пользователя
+            let userId = "demo-client" // В реальном приложении здесь был бы ID текущего пользователя
+            bookings = try await loadUserBookings(userId: userId)
             filteredBookingModels = bookings
+            
+            print("✅ Загружено бронирований: \(bookings.count)")
         } catch {
             errorMessage = error.localizedDescription
+            print("❌ Ошибка загрузки бронирований: \(error)")
         }
         
         isLoading = false
+    }
+    
+    private func loadUserBookings(userId: String) async throws -> [BookingModel] {
+        // Загружаем бронирования из всех ресторанов для пользователя
+        var allBookings: [BookingModel] = []
+        
+        for restaurant in restaurants {
+            do {
+                let restaurantBookings = try await bookingsService.fetchBookings(for: restaurant.id)
+                // Фильтруем только бронирования текущего пользователя
+                let userBookings = restaurantBookings.filter { $0.clientId == userId }
+                allBookings.append(contentsOf: userBookings)
+            } catch {
+                print("⚠️ Ошибка загрузки бронирований для ресторана \(restaurant.name): \(error)")
+            }
+        }
+        
+        // Сортируем по дате
+        return allBookings.sorted { $0.date > $1.date }
     }
     
     func refreshBookingModels() async {

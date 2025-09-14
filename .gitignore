@@ -94,3 +94,4 @@ GoogleService-Info*.plist
 
 # macOS
 .DS_Store
+Sitly/Config/APIKeys.plist

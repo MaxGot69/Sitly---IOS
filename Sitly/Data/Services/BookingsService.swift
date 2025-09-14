@@ -22,6 +22,14 @@ protocol BookingsServiceProtocol {
 class BookingsService: BookingsServiceProtocol {
     private let db = Firestore.firestore()
     private var listeners: [String: ListenerRegistration] = [:]
+    private let notificationService: NotificationServiceProtocol
+    private let analyticsService: AnalyticsServiceProtocol
+    
+    init(notificationService: NotificationServiceProtocol = NotificationService.shared,
+         analyticsService: AnalyticsServiceProtocol = AnalyticsService.shared) {
+        self.notificationService = notificationService
+        self.analyticsService = analyticsService
+    }
     
     // MARK: - Fetch Bookings
     func fetchBookings(for restaurantId: String) async throws -> [BookingModel] {
@@ -87,6 +95,14 @@ class BookingsService: BookingsServiceProtocol {
         
         print("✅ Бронирование создано с ID: \(documentRef.documentID)")
         
+        // Логируем создание бронирования
+        analyticsService.logBookingManagement(
+            bookingId: createdBooking.id,
+            action: "created",
+            status: createdBooking.status.rawValue,
+            guests: createdBooking.guests
+        )
+        
         // Отправляем уведомление ресторану
         await sendBookingNotification(booking: createdBooking, type: .newBooking)
         
@@ -147,10 +163,32 @@ class BookingsService: BookingsServiceProtocol {
         
         print("✅ Статус бронирования обновлен")
         
-        // Отправляем уведомление клиенту
-        if status == .confirmed {
-            // TODO: Отправить push notification клиенту
-            print("📱 Отправляем уведомление клиенту о подтверждении")
+        // Получаем данные бронирования для уведомления
+        do {
+            let booking = try await fetchBooking(bookingId: bookingId, restaurantId: restaurantId)
+            let notificationType: BookingNotificationType
+            
+            switch status {
+            case .confirmed:
+                notificationType = .bookingConfirmed
+            case .cancelled:
+                notificationType = .bookingCancelled
+            case .pending, .noShow, .completed:
+                notificationType = .newBooking
+            }
+            
+            // Логируем изменение статуса
+            analyticsService.logBookingManagement(
+                bookingId: bookingId,
+                action: status == .confirmed ? "confirmed" : status == .cancelled ? "cancelled" : "updated",
+                status: status.rawValue,
+                guests: booking.guests
+            )
+            
+            await sendBookingNotification(booking: booking, type: notificationType)
+        } catch {
+            print("⚠️ Не удалось получить данные бронирования для уведомления: \(error)")
+            analyticsService.logError(error, context: "updateBookingStatus")
         }
     }
     
@@ -248,10 +286,85 @@ class BookingsService: BookingsServiceProtocol {
         )
     }
     
+    // MARK: - Helper Methods
+    private func fetchBooking(bookingId: String, restaurantId: String) async throws -> BookingModel {
+        let document = try await db
+            .collection("restaurants")
+            .document(restaurantId)
+            .collection("bookings")
+            .document(bookingId)
+            .getDocument()
+        
+        guard let data = document.data() else {
+            throw NSError(domain: "BookingsService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Бронирование не найдено"])
+        }
+        
+        var bookingData = data
+        bookingData["id"] = document.documentID
+        
+        // Конвертируем Timestamp в Date
+        if let timestamp = data["date"] as? Timestamp {
+            bookingData["date"] = timestamp.dateValue()
+        }
+        if let createdTimestamp = data["createdAt"] as? Timestamp {
+            bookingData["createdAt"] = createdTimestamp.dateValue()
+        }
+        if let updatedTimestamp = data["updatedAt"] as? Timestamp {
+            bookingData["updatedAt"] = updatedTimestamp.dateValue()
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: bookingData)
+        return try JSONDecoder().decode(BookingModel.self, from: jsonData)
+    }
+    
     // MARK: - Notifications
     private func sendBookingNotification(booking: BookingModel, type: BookingNotificationType) async {
         print("🔔 Отправляем уведомление: \(type.rawValue)")
-        // TODO: Реализовать push notifications
+        
+        let notification: NotificationData
+        
+        switch type {
+        case .newBooking:
+            notification = NotificationData(
+                type: .newBooking,
+                body: "Новое бронирование на \(booking.timeSlot) для \(booking.guests) гостей",
+                data: [
+                    "bookingId": booking.id,
+                    "restaurantId": booking.restaurantId,
+                    "guests": booking.guests,
+                    "timeSlot": booking.timeSlot
+                ]
+            )
+        case .bookingConfirmed:
+            notification = NotificationData(
+                type: .bookingConfirmed,
+                body: "Бронирование подтверждено на \(booking.timeSlot)",
+                data: [
+                    "bookingId": booking.id,
+                    "restaurantId": booking.restaurantId
+                ]
+            )
+        case .bookingCancelled:
+            notification = NotificationData(
+                type: .bookingCancelled,
+                body: "Бронирование отменено на \(booking.timeSlot)",
+                data: [
+                    "bookingId": booking.id,
+                    "restaurantId": booking.restaurantId
+                ]
+            )
+        case .reminderBooking:
+            notification = NotificationData(
+                type: .bookingConfirmed,
+                body: "Напоминание о бронировании на \(booking.timeSlot)",
+                data: [
+                    "bookingId": booking.id,
+                    "restaurantId": booking.restaurantId
+                ]
+            )
+        }
+        
+        notificationService.sendNotification(notification)
     }
     
     // MARK: - Cleanup

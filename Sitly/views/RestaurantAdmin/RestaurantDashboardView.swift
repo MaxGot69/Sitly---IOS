@@ -3,6 +3,7 @@ import Charts
 
 struct RestaurantDashboardView: View {
     @StateObject private var viewModel = RestaurantDashboardViewModel()
+    @EnvironmentObject var appState: AppState
     @State private var selectedTab = 0
     @State private var showingProfile = false
     @State private var showingSettings = false
@@ -52,7 +53,11 @@ struct RestaurantDashboardView: View {
             .navigationBarHidden(true)
         }
         .onAppear {
+            viewModel.setCurrentUser(appState.currentUser)
             viewModel.loadDashboardData()
+        }
+        .onChange(of: appState.currentUser?.id) { newUserId in
+            viewModel.setCurrentUser(appState.currentUser)
         }
         .sheet(isPresented: $showingProfile) {
             Text("Профиль ресторана")

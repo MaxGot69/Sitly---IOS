@@ -6,12 +6,18 @@
 //
 
 import SwiftUI
+import Combine
+
+extension Foundation.Notification.Name {
+    static let restaurantCreated = Foundation.Notification.Name("restaurantCreated")
+}
 
 struct ModernRestaurantMainView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedTab = 0
     @State private var tabOffset: CGFloat = 0
     @State private var isGlowing = false
+    @State private var restaurantName = "Ресторан"
     
     var body: some View {
         ZStack {
@@ -54,6 +60,43 @@ struct ModernRestaurantMainView: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                 isGlowing.toggle()
+            }
+            
+            // Загружаем название ресторана
+            loadRestaurantName()
+        }
+        .onChange(of: appState.currentUser?.id) { _, _ in
+            // Обновляем название при смене пользователя
+            loadRestaurantName()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Foundation.Notification.Name.restaurantCreated)) { _ in
+            // Обновляем название после создания ресторана
+            loadRestaurantName()
+        }
+    }
+    
+    // MARK: - Private Methods
+    private func loadRestaurantName() {
+        Task {
+            guard let userId = appState.currentUser?.id else { return }
+            
+            do {
+                let restaurantUseCase = RestaurantUseCase(
+                    repository: RestaurantRepository(
+                        networkService: NetworkService(),
+                        storageService: StorageService(),
+                        cacheService: CacheService(storageService: StorageService())
+                    ),
+                    locationService: LocationService()
+                )
+                let restaurants = try await restaurantUseCase.getRestaurants()
+                let userRestaurants = restaurants.filter { $0.ownerId == userId }
+                
+                if let firstRestaurant = userRestaurants.first {
+                    restaurantName = firstRestaurant.name
+                }
+            } catch {
+                print("❌ Ошибка загрузки названия ресторана: \(error)")
             }
         }
     }
@@ -117,7 +160,7 @@ struct ModernRestaurantMainView: View {
                     .font(.title3)
                     .foregroundColor(.white.opacity(0.8))
                 
-                Text("Ресторан")
+                Text(restaurantName)
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundStyle(
@@ -130,6 +173,26 @@ struct ModernRestaurantMainView: View {
             }
             
             Spacer()
+            
+            // Кнопка выхода
+            Button(action: {
+                HapticService.shared.buttonPress()
+                appState.logout()
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color.red.opacity(0.3))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.red.opacity(0.5), lineWidth: 1)
+                        )
+                    
+                    Image(systemName: "power")
+                        .font(.system(size: 18))
+                        .foregroundColor(.red)
+                }
+            }
             
             // Уведомления
             Button(action: {
@@ -700,25 +763,13 @@ struct ModernBookingsView: View {
 
 struct ModernAIAssistantView: View {
     var body: some View {
-        VStack {
-            Text("AI Помощник")
-                .font(.title)
-                .foregroundColor(.white)
-            Text("Скоро будет доступно")
-                .foregroundColor(.white.opacity(0.7))
-        }
+        AIAssistantView()
     }
 }
 
 struct ModernRestaurantProfileView: View {
     var body: some View {
-        VStack {
-            Text("Профиль ресторана")
-                .font(.title)
-                .foregroundColor(.white)
-            Text("Скоро будет доступно")
-                .foregroundColor(.white.opacity(0.7))
-        }
+        RestaurantOnboardingView()
     }
 }
 

@@ -76,6 +76,8 @@ class RestaurantOnboardingViewModel: ObservableObject {
     
     // MARK: - Restaurant Creation
     func createRestaurant(userId: String) async {
+        print("🏢 RestaurantOnboardingViewModel: НАЧАЛО СОЗДАНИЯ РЕСТОРАНА")
+        
         isLoading = true
         errorMessage = nil
         

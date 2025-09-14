@@ -45,6 +45,14 @@ final class NetworkService: NetworkServiceProtocol {
                     restaurantData.removeValue(forKey: "coordinate")
                 }
                 
+                // Конвертируем Firebase Timestamp в строку
+                if let createdAt = restaurantData["createdAt"] as? Timestamp {
+                    restaurantData["createdAt"] = ISO8601DateFormatter().string(from: createdAt.dateValue())
+                }
+                if let updatedAt = restaurantData["updatedAt"] as? Timestamp {
+                    restaurantData["updatedAt"] = ISO8601DateFormatter().string(from: updatedAt.dateValue())
+                }
+                
                 let jsonData = try JSONSerialization.data(withJSONObject: restaurantData)
                 return try JSONDecoder().decode(Restaurant.self, from: jsonData)
             }
@@ -65,6 +73,14 @@ final class NetworkService: NetworkServiceProtocol {
                 restaurantData.removeValue(forKey: "coordinate")
             }
             
+            // Конвертируем Firebase Timestamp в строку
+            if let createdAt = restaurantData["createdAt"] as? Timestamp {
+                restaurantData["createdAt"] = ISO8601DateFormatter().string(from: createdAt.dateValue())
+            }
+            if let updatedAt = restaurantData["updatedAt"] as? Timestamp {
+                restaurantData["updatedAt"] = ISO8601DateFormatter().string(from: updatedAt.dateValue())
+            }
+            
             let jsonData = try JSONSerialization.data(withJSONObject: restaurantData)
             return try JSONDecoder().decode(Restaurant.self, from: jsonData) as! T
             
@@ -82,6 +98,14 @@ final class NetworkService: NetworkServiceProtocol {
                     restaurantData["latitude"] = geoPoint.latitude
                     restaurantData["longitude"] = geoPoint.longitude
                     restaurantData.removeValue(forKey: "coordinate")
+                }
+                
+                // Конвертируем Firebase Timestamp в строку
+                if let createdAt = restaurantData["createdAt"] as? Timestamp {
+                    restaurantData["createdAt"] = ISO8601DateFormatter().string(from: createdAt.dateValue())
+                }
+                if let updatedAt = restaurantData["updatedAt"] as? Timestamp {
+                    restaurantData["updatedAt"] = ISO8601DateFormatter().string(from: updatedAt.dateValue())
                 }
                 
                 let jsonData = try JSONSerialization.data(withJSONObject: restaurantData)

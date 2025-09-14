@@ -66,7 +66,9 @@ final class AppState: ObservableObject {
     // MARK: - Public Methods
     
     func checkAuthenticationStatus() {
-        isLoading = true
+        Task { @MainActor in
+            self.isLoading = true
+        }
         
         Task {
             do {
@@ -100,7 +102,9 @@ final class AppState: ObservableObject {
     }
     
     func login(email: String, password: String, rememberMe: Bool) async throws -> Bool {
-        isLoading = true
+        await MainActor.run {
+            self.isLoading = true
+        }
         
         do {
             let success = try await userUseCase.login(
@@ -111,8 +115,17 @@ final class AppState: ObservableObject {
             
             if success {
                 // Загружаем профиль пользователя
-                currentUser = try await userUseCase.getUserProfile()
-                isAuthenticated = true
+                let user = try await userUseCase.getUserProfile()
+                await MainActor.run {
+                    self.currentUser = user
+                    self.isAuthenticated = true
+                }
+                
+                // Устанавливаем контекст пользователя для умного выбора сервисов
+                DependencyContainer.shared.setCurrentUser(
+                    id: currentUser?.id,
+                    email: email
+                )
                 
                 return true
             } else {
@@ -122,12 +135,12 @@ final class AppState: ObservableObject {
             isLoading = false
             throw error
         }
-        
-        isLoading = false
     }
     
     func register(email: String, password: String, name: String) async throws -> Bool {
-        isLoading = true
+        await MainActor.run {
+            self.isLoading = true
+        }
         
         do {
             let success = try await userUseCase.register(
@@ -140,18 +153,24 @@ final class AppState: ObservableObject {
                 // Автоматически входим после регистрации
                 return try await login(email: email, password: password, rememberMe: false)
             } else {
+                await MainActor.run {
+                    self.isLoading = false
+                }
                 return false
             }
         } catch {
+            await MainActor.run {
+                self.isLoading = false
+            }
             throw error
         }
-        
-        isLoading = false
     }
     
     // MARK: - Registration with Role
     func register(email: String, password: String, name: String, role: UserRole) async throws {
-        isLoading = true
+        await MainActor.run {
+            self.isLoading = true
+        }
         
         do {
             let user = try await userUseCase.registerWithRole(
@@ -208,7 +227,10 @@ final class AppState: ObservableObject {
     private func loadUserProfile(userId: String) {
         Task {
             do {
-                currentUser = try await userUseCase.getUserProfile()
+                let user = try await userUseCase.getUserProfile()
+                await MainActor.run {
+                    self.currentUser = user
+                }
             } catch {
                 print("❌ Ошибка загрузки профиля: \(error)")
             }
@@ -219,6 +241,13 @@ final class AppState: ObservableObject {
         authToken = nil
         refreshToken = nil
         currentUser = nil
+    }
+    
+    // MARK: - Refresh Methods
+    func refreshUser() {
+        if let userId = currentUser?.id {
+            loadUserProfile(userId: userId)
+        }
     }
 }
 

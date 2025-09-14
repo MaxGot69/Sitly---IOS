@@ -2,10 +2,86 @@ import Foundation
 import SwiftUI
 import CoreLocation
 
+// MARK: - Demo Account Configuration
+
+struct DemoAccounts {
+    // Демо-аккаунты для презентации
+    static let demoRestaurantId = "demo-restaurant"
+    static let demoClientId = "demo-client" 
+    static let demoRestaurantEmail = "demo-restaurant@sitly.app"
+    static let demoClientEmail = "demo-client@sitly.app"
+    
+    /// Проверяет, является ли пользователь демо-аккаунтом
+    static func isDemoAccount(_ userId: String?) -> Bool {
+        guard let userId = userId else { return false }
+        return userId == demoRestaurantId || userId == demoClientId
+    }
+    
+    /// Проверяет, является ли email демо-аккаунтом
+    static func isDemoEmail(_ email: String?) -> Bool {
+        guard let email = email else { return false }
+        return email == demoRestaurantEmail || email == demoClientEmail
+    }
+    
+    /// Проверяет, является ли ресторан демо-рестораном
+    static func isDemoRestaurant(_ restaurantId: String?) -> Bool {
+        return restaurantId == demoRestaurantId
+    }
+    
+    /// Проверяет, нужно ли использовать демо-режим для данного контекста
+    static func shouldUseDemoMode(userId: String? = nil, email: String? = nil, restaurantId: String? = nil) -> Bool {
+        return isDemoAccount(userId) || isDemoEmail(email) || isDemoRestaurant(restaurantId)
+    }
+}
+
+// MARK: - Service Mode Configuration
+
+enum ServiceMode {
+    case demo       // Используем моки для презентации
+    case production // Используем реальные Firebase сервисы
+    
+    static func determine(userId: String? = nil, email: String? = nil, restaurantId: String? = nil) -> ServiceMode {
+        return DemoAccounts.shouldUseDemoMode(userId: userId, email: email, restaurantId: restaurantId) ? .demo : .production
+    }
+}
+
 // MARK: - Dependency Container
 
 final class DependencyContainer: ObservableObject {
     static let shared = DependencyContainer()
+    
+    // MARK: - User Context for Smart Service Selection
+    @Published private var currentUserId: String?
+    @Published private var currentUserEmail: String?
+    private var currentRestaurantId: String?
+    
+    /// Устанавливает контекст текущего пользователя для умного выбора сервисов
+    func setCurrentUser(id: String?, email: String?) {
+        currentUserId = id
+        currentUserEmail = email
+        print("🔄 DI: Установлен пользователь - ID: \(id ?? "nil"), Email: \(email ?? "nil")")
+    }
+    
+    /// Устанавливает контекст текущего ресторана
+    func setCurrentRestaurant(id: String?) {
+        currentRestaurantId = id
+        print("🏪 DI: Установлен ресторан - ID: \(id ?? "nil")")
+    }
+    
+    /// Определяет режим работы для текущего контекста
+    var serviceMode: ServiceMode {
+        return ServiceMode.determine(
+            userId: currentUserId,
+            email: currentUserEmail,
+            restaurantId: currentRestaurantId
+        )
+    }
+    
+    /// Логирует режим сервиса
+    func logServiceMode(_ serviceName: String, mode: ServiceMode) {
+        let emoji = mode == .demo ? "🎭" : "🚀"
+        print("\(emoji) DI: \(serviceName) - режим \(mode == .demo ? "DEMO" : "PRODUCTION")")
+    }
     
     // MARK: - Services
     lazy var networkService: NetworkServiceProtocol = NetworkService()
@@ -383,6 +459,41 @@ private class MockUserUseCase: UserUseCaseProtocol {
     
     func deleteUser(id: UUID) async throws {
         // Ничего не делаем для MVP
+    }
+    
+    // MARK: - Smart Service Factory Methods
+    
+    /// Умный выбор TablesService: Demo моки или реальный Firebase
+    func getTablesService(for restaurantId: String) -> TablesServiceProtocol {
+        if DemoAccounts.isDemoRestaurant(restaurantId) {
+            print("🎭 DI: TablesService - режим DEMO")
+            return MockTablesService()
+        } else {
+            print("🚀 DI: TablesService - режим PRODUCTION")
+            return TablesService()
+        }
+    }
+    
+    /// Умный выбор BookingsService: Demo моки или реальный Firebase  
+    func getBookingsService(for restaurantId: String) -> BookingsServiceProtocol {
+        if DemoAccounts.isDemoRestaurant(restaurantId) {
+            print("🎭 DI: BookingsService - режим DEMO")
+            return MockBookingsService()
+        } else {
+            print("🚀 DI: BookingsService - режим PRODUCTION")
+            return BookingsService()
+        }
+    }
+    
+    /// Умный выбор AIService: Demo моки или реальный OpenAI
+    func getAIService() -> AIServiceProtocol {
+        if let apiKey = APIKeys.openAI {
+            print("🤖 DI: AIService - реальный OpenAI")
+            return AIService(apiKey: apiKey)
+        } else {
+            print("🎭 DI: AIService - режим DEMO (API ключ не найден)")
+            return MockAIService()
+        }
     }
 }
 

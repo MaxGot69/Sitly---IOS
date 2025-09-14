@@ -29,9 +29,11 @@ struct BookingView: View {
                             cacheService: CacheService(storageService: StorageService())
                         )
                     )
+                    let tablesService = TablesService()
                     self._viewModel = StateObject(wrappedValue: BookingViewModel(
                         restaurant: restaurant,
-                        bookingUseCase: bookingUseCase
+                        bookingUseCase: bookingUseCase,
+                        tablesService: tablesService
                     ))
                 }
     
@@ -340,30 +342,53 @@ struct BookingView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
-                ForEach(viewModel.availableTables, id: \.self) { table in
-                    Button(action: {
-                        viewModel.selectedTable = table
-                    }) {
-                        VStack(spacing: 12) {
-                            Image(systemName: getTableIcon(for: table))
-                                .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(viewModel.selectedTable == table ? .black : .mint)
-                            
-                            VStack(spacing: 4) {
-                                Text(table)
-                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                    .foregroundColor(viewModel.selectedTable == table ? .black : .white)
-                                
-                                Text("4-6 мест")
-                                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                                    .foregroundColor(viewModel.selectedTable == table ? .black.opacity(0.7) : .gray)
+            Group {
+                if viewModel.isLoadingTables {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .mint))
+                        Text("Загружаем столики...")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.gray)
+                    }
+                    .frame(height: 100)
+                } else if viewModel.availableTables.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "table.furniture")
+                            .font(.system(size: 32))
+                            .foregroundColor(.gray)
+                        Text("Нет доступных столиков")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.gray)
+                    }
+                    .frame(height: 100)
+                } else {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
+                        ForEach(viewModel.availableTables, id: \.id) { table in
+                            Button(action: {
+                                viewModel.selectedTable = table.name
+                            }) {
+                                VStack(spacing: 12) {
+                                    Image(systemName: getTableIcon(for: table.type.rawValue))
+                                        .font(.system(size: 24, weight: .medium))
+                                        .foregroundColor(viewModel.selectedTable == table.name ? .black : .mint)
+                                    
+                                    VStack(spacing: 4) {
+                                        Text(table.name)
+                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                            .foregroundColor(viewModel.selectedTable == table.name ? .black : .white)
+                                        
+                                        Text("\(table.capacity) мест")
+                                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                            .foregroundColor(viewModel.selectedTable == table.name ? .black.opacity(0.7) : .gray)
+                                    }
+                                }
+                                .frame(height: 100)
+                                .frame(maxWidth: .infinity)
+                                .background(tableSelectionBackground(for: table.name))
+                                .overlay(tableSelectionOverlay(for: table.name))
                             }
                         }
-                        .frame(height: 100)
-                        .frame(maxWidth: .infinity)
-                        .background(tableSelectionBackground(for: table))
-                        .overlay(tableSelectionOverlay(for: table))
                     }
                 }
             }

@@ -21,6 +21,7 @@ protocol TablesServiceProtocol {
 class TablesService: TablesServiceProtocol {
     private let db = Firestore.firestore()
     private var listeners: [String: ListenerRegistration] = [:]
+    private var subjects: [String: PassthroughSubject<[TableModel], Error>] = [:]
     
     // MARK: - Fetch Tables
     func fetchTables(for restaurantId: String) async throws -> [TableModel] {
@@ -35,6 +36,14 @@ class TablesService: TablesServiceProtocol {
         let tables = try snapshot.documents.compactMap { document -> TableModel? in
             var data = document.data()
             data["id"] = document.documentID
+            
+            // Конвертируем Firebase Timestamp в строку
+            if let createdAt = data["createdAt"] as? Timestamp {
+                data["createdAt"] = ISO8601DateFormatter().string(from: createdAt.dateValue())
+            }
+            if let updatedAt = data["updatedAt"] as? Timestamp {
+                data["updatedAt"] = ISO8601DateFormatter().string(from: updatedAt.dateValue())
+            }
             
             let jsonData = try JSONSerialization.data(withJSONObject: data)
             return try JSONDecoder().decode(TableModel.self, from: jsonData)
@@ -131,21 +140,29 @@ class TablesService: TablesServiceProtocol {
     func observeTables(for restaurantId: String) -> AnyPublisher<[TableModel], Error> {
         print("👀 Настраиваем наблюдение за столиками ресторана: \(restaurantId)")
         
-        return Future<[TableModel], Error> { promise in
-            let listener = self.db
+        // Создаем или получаем существующий subject
+        if subjects[restaurantId] == nil {
+            subjects[restaurantId] = PassthroughSubject<[TableModel], Error>()
+        }
+        
+        // Настраиваем listener если его еще нет
+        if listeners[restaurantId] == nil {
+            let listener = db
                 .collection("restaurants")
                 .document(restaurantId)
                 .collection("tables")
                 .order(by: "createdAt")
-                .addSnapshotListener { snapshot, error in
+                .addSnapshotListener { [weak self] snapshot, error in
+                    guard let self = self else { return }
+                    
                     if let error = error {
                         print("❌ Ошибка наблюдения за столиками: \(error)")
-                        promise(.failure(error))
+                        self.subjects[restaurantId]?.send(completion: .failure(error))
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        promise(.success([]))
+                        self.subjects[restaurantId]?.send([])
                         return
                     }
                     
@@ -154,28 +171,38 @@ class TablesService: TablesServiceProtocol {
                             var data = document.data()
                             data["id"] = document.documentID
                             
+                            // Конвертируем Firebase Timestamp в строку
+                            if let createdAt = data["createdAt"] as? Timestamp {
+                                data["createdAt"] = ISO8601DateFormatter().string(from: createdAt.dateValue())
+                            }
+                            if let updatedAt = data["updatedAt"] as? Timestamp {
+                                data["updatedAt"] = ISO8601DateFormatter().string(from: updatedAt.dateValue())
+                            }
+                            
                             let jsonData = try JSONSerialization.data(withJSONObject: data)
                             return try JSONDecoder().decode(TableModel.self, from: jsonData)
                         }
                         
                         print("📊 Обновлено столиков: \(tables.count)")
-                        promise(.success(tables))
+                        self.subjects[restaurantId]?.send(tables)
                     } catch {
                         print("❌ Ошибка парсинга столиков: \(error)")
-                        promise(.failure(error))
+                        self.subjects[restaurantId]?.send(completion: .failure(error))
                     }
                 }
             
-            // Сохраняем listener для отписки
-            self.listeners[restaurantId] = listener
+            listeners[restaurantId] = listener
         }
-        .eraseToAnyPublisher()
+        
+        return subjects[restaurantId]!.eraseToAnyPublisher()
     }
     
     // MARK: - Cleanup
     func stopObserving(restaurantId: String) {
         listeners[restaurantId]?.remove()
         listeners.removeValue(forKey: restaurantId)
+        subjects[restaurantId]?.send(completion: .finished)
+        subjects.removeValue(forKey: restaurantId)
         print("🛑 Остановлено наблюдение за столиками ресторана: \(restaurantId)")
     }
     

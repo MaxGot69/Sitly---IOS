@@ -16,17 +16,24 @@ class RestaurantRepository: RestaurantRepositoryProtocol {
     }
     
     func fetchRestaurants() async throws -> [Restaurant] {
+        print("🔥 RestaurantRepository: НАЧАЛО ЗАГРУЗКИ РЕСТОРАНОВ")
+        
         do {
+            print("🔥 RestaurantRepository: Загружаем рестораны из Firebase...")
             let restaurants: [Restaurant] = try await networkService.request(FirebaseEndpoint.getRestaurants)
+            print("✅ RestaurantRepository: Загружено \(restaurants.count) ресторанов из Firebase")
             await cacheService.save(restaurants, forKey: "restaurants", expiration: 300)
             return restaurants
         } catch {
+            print("❌ RestaurantRepository: Ошибка загрузки из Firebase: \(error)")
             // Fallback to cached data
             if let cached: [Restaurant] = await cacheService.load(forKey: "restaurants") {
+                print("📱 RestaurantRepository: Используем кэшированные данные (\(cached.count) ресторанов)")
                 return cached
             }
-            // Fallback to mock data for MVP
-            return getMockRestaurants()
+            // Возвращаем пустой массив вместо моковых данных
+            print("📱 RestaurantRepository: Возвращаем пустой массив ресторанов")
+            return []
         }
     }
     

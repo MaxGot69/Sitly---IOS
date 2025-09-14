@@ -12,6 +12,7 @@ struct RestaurantOnboardingView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel = RestaurantOnboardingViewModel()
     @State private var currentStep = 0
+    @State private var showSuccess = false
     
     let totalSteps = 4
     
@@ -64,6 +65,21 @@ struct RestaurantOnboardingView: View {
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
             }
+        }
+        .alert("Ресторан создан!", isPresented: $showSuccess) {
+            Button("Отлично!") {
+                // Принудительно обновляем название ресторана
+                NotificationCenter.default.post(name: Foundation.Notification.Name.restaurantCreated, object: nil)
+                
+                // Обновляем состояние приложения
+                appState.refreshUser()
+                
+                // Закрываем экран онбординга
+                // Это произойдет автоматически, так как ModernRestaurantMainView
+                // проверит данные ресторана и покажет админку
+            }
+        } message: {
+            Text("Ваш ресторан успешно создан и настроен! Теперь вы можете управлять столиками и бронированиями.")
         }
     }
     
@@ -157,6 +173,11 @@ struct RestaurantOnboardingView: View {
             // Завершаем регистрацию
             Task {
                 await viewModel.createRestaurant(userId: appState.currentUser?.id ?? "")
+                
+                // Проверяем успешность создания
+                if viewModel.errorMessage == nil {
+                    showSuccess = true
+                }
             }
         } else {
             // Переходим к следующему шагу

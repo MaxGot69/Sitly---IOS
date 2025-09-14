@@ -24,23 +24,40 @@ class RestaurantDashboardViewModel: ObservableObject {
     private let bookingRepository: BookingRepositoryProtocol
     private let aiService: AIServiceProtocol
     private let userRepository: UserRepositoryProtocol
+    private let notificationService: NotificationServiceProtocol
+    private let analyticsService: AnalyticsServiceProtocol
     private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - AppState Integration
+    @Published var currentUser: User?
     
     // MARK: - Initialization
     init(restaurantRepository: RestaurantRepositoryProtocol = RestaurantRepository(networkService: NetworkService(), storageService: StorageService(), cacheService: CacheService(storageService: StorageService())),
          bookingRepository: BookingRepositoryProtocol = BookingRepository(networkService: NetworkService(), storageService: StorageService()),
          aiService: AIServiceProtocol = MockAIService(),
-         userRepository: UserRepositoryProtocol = UserRepository(networkService: NetworkService(), storageService: StorageService())) {
+         userRepository: UserRepositoryProtocol = UserRepository(networkService: NetworkService(), storageService: StorageService()),
+         notificationService: NotificationServiceProtocol = NotificationService.shared,
+         analyticsService: AnalyticsServiceProtocol = AnalyticsService.shared) {
         self.restaurantRepository = restaurantRepository
         self.bookingRepository = bookingRepository
         self.aiService = aiService
         self.userRepository = userRepository
+        self.notificationService = notificationService
+        self.analyticsService = analyticsService
         
         setupBindings()
     }
     
     // MARK: - Setup
     private func setupBindings() {
+        // Запрашиваем разрешения на уведомления
+        Task {
+            await notificationService.requestPermission()
+        }
+        
+        // Загружаем данные при инициализации
+        loadDashboardData()
+        
         // Автоматическое обновление данных каждые 5 минут
         Timer.publish(every: 300, on: .main, in: .common)
             .autoconnect()
@@ -74,8 +91,15 @@ class RestaurantDashboardViewModel: ObservableObject {
         
         do {
             restaurant = try await restaurantRepository.fetchRestaurant(by: restaurantId)
+            
+            // Логируем просмотр дашборда
+            analyticsService.logScreenView("restaurant_dashboard", parameters: [
+                AnalyticsParameter.restaurantId.rawValue: restaurantId
+            ])
+            
         } catch {
             errorMessage = "Не удалось загрузить данные ресторана: \(error.localizedDescription)"
+            analyticsService.logError(error, context: "loadRestaurantData")
         }
     }
     
@@ -334,10 +358,22 @@ class RestaurantDashboardViewModel: ObservableObject {
     }
     
     // MARK: - Helper Methods
+    func setCurrentUser(_ user: User?) {
+        currentUser = user
+        if let user = user {
+            // Логируем вход пользователя
+            analyticsService.setUserId(user.id)
+            analyticsService.setUserProperty(user.role.rawValue, forName: "user_role")
+            
+            Task {
+                await refreshData()
+            }
+        }
+    }
+    
     private func getCurrentUser() async -> User? {
-        // Получаем текущего пользователя
-        // В реальном приложении это будет из AppState
-        return nil
+        // Получаем текущего пользователя из AppState
+        return currentUser
     }
     
     private func showSuccessMessage(_ message: String) {

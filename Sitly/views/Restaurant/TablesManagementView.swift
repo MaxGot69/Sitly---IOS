@@ -86,9 +86,7 @@ struct TablesManagementView: View {
                 .multilineTextAlignment(.center)
             
             Button("Повторить") {
-                Task {
-                    await viewModel.loadTables()
-                }
+                viewModel.loadTables()
                 viewModel.errorMessage = nil
             }
             .padding(.horizontal, 24)
@@ -298,6 +296,62 @@ struct TableModel: Identifiable, Codable {
     var status: TableStatusType
     var isVIP: Bool
     var position: TablePosition?
+    var createdAt: Date?
+    var updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, capacity, type, status, isVIP, position, createdAt, updatedAt
+    }
+    
+    init(id: String = UUID().uuidString, name: String, capacity: Int, type: TableTypeEnum, status: TableStatusType, isVIP: Bool, position: TablePosition? = nil, createdAt: Date? = nil, updatedAt: Date? = nil) {
+        self.id = id
+        self.name = name
+        self.capacity = capacity
+        self.type = type
+        self.status = status
+        self.isVIP = isVIP
+        self.position = position
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        capacity = try container.decode(Int.self, forKey: .capacity)
+        type = try container.decode(TableTypeEnum.self, forKey: .type)
+        status = try container.decode(TableStatusType.self, forKey: .status)
+        isVIP = try container.decode(Bool.self, forKey: .isVIP)
+        position = try container.decodeIfPresent(TablePosition.self, forKey: .position)
+        
+        // Кастомная обработка дат
+        if let createdAtString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
+            createdAt = ISO8601DateFormatter().date(from: createdAtString)
+        }
+        if let updatedAtString = try container.decodeIfPresent(String.self, forKey: .updatedAt) {
+            updatedAt = ISO8601DateFormatter().date(from: updatedAtString)
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(capacity, forKey: .capacity)
+        try container.encode(type, forKey: .type)
+        try container.encode(status, forKey: .status)
+        try container.encode(isVIP, forKey: .isVIP)
+        try container.encodeIfPresent(position, forKey: .position)
+        
+        // Кастомная обработка дат
+        if let createdAt = createdAt {
+            try container.encode(ISO8601DateFormatter().string(from: createdAt), forKey: .createdAt)
+        }
+        if let updatedAt = updatedAt {
+            try container.encode(ISO8601DateFormatter().string(from: updatedAt), forKey: .updatedAt)
+        }
+    }
     
     enum TableTypeEnum: String, CaseIterable, Codable {
         case indoor = "indoor"
@@ -370,10 +424,17 @@ class TablesViewModel: ObservableObject {
     
     init(restaurantId: String = "demo-restaurant", tablesService: TablesServiceProtocol? = nil) {
         self.restaurantId = restaurantId
-        self.tablesService = tablesService ?? MockTablesService() // Используем Mock для разработки
+        self.tablesService = tablesService ?? TablesService()
         
         setupRealTimeObserver()
         
+        Task {
+            await loadTables()
+        }
+    }
+    
+    // MARK: - Public Methods
+    func refreshTables() {
         Task {
             await loadTables()
         }
