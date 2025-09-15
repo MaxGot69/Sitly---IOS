@@ -14,6 +14,18 @@ class RestaurantDashboardViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
+    // MARK: - Navigation States
+    @Published var showingManualBooking = false
+    @Published var showingAIAssistant = false
+    @Published var showingBookingDetail: Booking?
+    @Published var showingProfile = false
+    @Published var showingSettings = false
+    
+    // MARK: - Toast System
+    @Published var showToast = false
+    @Published var toastMessage = ""
+    @Published var toastType: ToastType = .success
+    
     // MARK: - Computed Properties
     var pendingBookingsCount: Int {
         upcomingBookings.filter { $0.status == .pending }.count
@@ -237,51 +249,71 @@ class RestaurantDashboardViewModel: ObservableObject {
     }
     
     func createManualBooking() {
-        // Открываем экран создания брони
-        // Это будет реализовано в отдельном view
+        showingManualBooking = true
+        analyticsService.logEvent(.manualBookingOpened, parameters: [
+            AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+        ])
     }
     
     func toggleRestaurantStatus() {
         Task {
-            guard let restaurant = restaurant else { return }
+            guard let restaurant = restaurant else { 
+                showError("Ресторан не найден")
+                return 
+            }
             
-            let updatedRestaurant = Restaurant(
-                id: restaurant.id,
-                name: restaurant.name,
-                description: restaurant.description,
-                cuisineType: restaurant.cuisineType,
-                address: restaurant.address,
-                coordinates: restaurant.coordinates,
-                phoneNumber: restaurant.phoneNumber,
-                website: restaurant.website,
-                rating: restaurant.rating,
-                reviewCount: restaurant.reviewCount,
-                priceRange: restaurant.priceRange,
-                workingHours: restaurant.workingHours,
-                photos: restaurant.photos,
-                isOpen: !restaurant.isOpen,
-                isVerified: restaurant.isVerified,
-                ownerId: restaurant.ownerId,
-                subscriptionPlan: restaurant.subscriptionPlan,
-                status: restaurant.status,
-                features: restaurant.features,
-                tables: restaurant.tables,
-                menu: restaurant.menu,
-                analytics: restaurant.analytics,
-                settings: restaurant.settings
-            )
-            
-            // Обновляем локальное состояние
-            self.restaurant = updatedRestaurant
-            
-            let status = updatedRestaurant.isOpen ? "открыт" : "закрыт"
-            showSuccessMessage("Ресторан \(status)")
+            do {
+                let updatedRestaurant = Restaurant(
+                    id: restaurant.id,
+                    name: restaurant.name,
+                    description: restaurant.description,
+                    cuisineType: restaurant.cuisineType,
+                    address: restaurant.address,
+                    coordinates: restaurant.coordinates,
+                    phoneNumber: restaurant.phoneNumber,
+                    website: restaurant.website,
+                    rating: restaurant.rating,
+                    reviewCount: restaurant.reviewCount,
+                    priceRange: restaurant.priceRange,
+                    workingHours: restaurant.workingHours,
+                    photos: restaurant.photos,
+                    isOpen: !restaurant.isOpen,
+                    isVerified: restaurant.isVerified,
+                    ownerId: restaurant.ownerId,
+                    subscriptionPlan: restaurant.subscriptionPlan,
+                    status: restaurant.status,
+                    features: restaurant.features,
+                    tables: restaurant.tables,
+                    menu: restaurant.menu,
+                    analytics: restaurant.analytics,
+                    settings: restaurant.settings
+                )
+                
+                // Обновляем в Firebase
+                try await restaurantRepository.updateRestaurant(updatedRestaurant)
+                
+                // Обновляем локальное состояние
+                self.restaurant = updatedRestaurant
+                
+                let status = updatedRestaurant.isOpen ? "открыт" : "закрыт"
+                showSuccessMessage("Ресторан \(status)")
+                
+                analyticsService.logEvent(.restaurantStatusChanged, parameters: [
+                    AnalyticsParameter.restaurantId.rawValue: restaurant.id,
+                    "new_status": updatedRestaurant.isOpen ? "open" : "closed"
+                ])
+                
+            } catch {
+                showError("Не удалось изменить статус: \(error.localizedDescription)")
+            }
         }
     }
     
     func openAIAssistant() {
-        // Открываем AI-помощника
-        // Это будет реализовано в отдельном view
+        showingAIAssistant = true
+        analyticsService.logEvent(.aiAssistantOpened, parameters: [
+            AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+        ])
     }
     
     // MARK: - AI Actions
@@ -339,14 +371,88 @@ class RestaurantDashboardViewModel: ObservableObject {
     
     // MARK: - Booking Actions
     func handleBookingAction(_ booking: Booking) {
-        // Обрабатываем действия с бронированием
-        // Это будет реализовано в отдельном view
+        showingBookingDetail = booking
+        analyticsService.logEvent(.bookingDetailOpened, parameters: [
+            AnalyticsParameter.bookingId.rawValue: booking.id,
+            AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+        ])
+    }
+    
+    func confirmBooking(_ booking: Booking) {
+        Task { @MainActor in
+            do {
+                _ = try await bookingRepository.updateBookingStatus(bookingId: booking.id, status: .confirmed)
+                await loadUpcomingBookings()
+                await loadTodayStats()
+                showSuccessMessage("Бронирование подтверждено")
+                
+                analyticsService.logEvent(.bookingConfirmed, parameters: [
+                    AnalyticsParameter.bookingId.rawValue: booking.id,
+                    AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+                ])
+                
+            } catch {
+                showError("Не удалось подтвердить бронирование: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    func cancelBooking(_ booking: Booking) {
+        Task { @MainActor in
+            do {
+                _ = try await bookingRepository.updateBookingStatus(bookingId: booking.id, status: .cancelled)
+                await loadUpcomingBookings()
+                await loadTodayStats()
+                showSuccessMessage("Бронирование отменено")
+                
+                analyticsService.logEvent(.bookingCancelled, parameters: [
+                    AnalyticsParameter.bookingId.rawValue: booking.id,
+                    AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+                ])
+                
+            } catch {
+                showError("Не удалось отменить бронирование: \(error.localizedDescription)")
+            }
+        }
     }
     
     // MARK: - Notification Actions
     func handleNotification(_ notification: Notification) {
-        // Обрабатываем уведомления
-        // Это будет реализовано в отдельном view
+        // Помечаем уведомление как прочитанное
+        if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+            let updatedNotification = Notification(
+                id: notification.id,
+                title: notification.title,
+                message: notification.message,
+                type: notification.type,
+                isRead: true,
+                createdAt: notification.createdAt,
+                icon: notification.icon,
+                color: notification.color
+            )
+            notifications[index] = updatedNotification
+        }
+        
+        analyticsService.logEvent(.notificationTapped, parameters: [
+            "notification_id": notification.id,
+            AnalyticsParameter.notificationType.rawValue: notification.type.rawValue
+        ])
+    }
+    
+    func markAllNotificationsAsRead() {
+        notifications = notifications.map { notification in
+            Notification(
+                id: notification.id,
+                title: notification.title,
+                message: notification.message,
+                type: notification.type,
+                isRead: true,
+                createdAt: notification.createdAt,
+                icon: notification.icon,
+                color: notification.color
+            )
+        }
+        showSuccessMessage("Все уведомления прочитаны")
     }
     
     // MARK: - Data Refresh
@@ -377,9 +483,47 @@ class RestaurantDashboardViewModel: ObservableObject {
     }
     
     private func showSuccessMessage(_ message: String) {
-        // Показываем сообщение об успехе
-        // В реальном приложении это будет через toast или alert
-        print("✅ \(message)")
+        toastMessage = message
+        toastType = .success
+        showToast = true
+        
+        // Автоматически скрываем toast через 3 секунды
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            self.showToast = false
+        }
+    }
+    
+    private func showError(_ message: String) {
+        toastMessage = message
+        toastType = .error
+        showToast = true
+        
+        // Автоматически скрываем toast через 5 секунд
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            self.showToast = false
+        }
+    }
+    
+    func hideToast() {
+        showToast = false
+    }
+    
+    // MARK: - Manual Booking Creation
+    func createBooking(_ booking: Booking) async {
+        do {
+            _ = try await bookingRepository.createBooking(booking)
+            await loadUpcomingBookings()
+            await loadTodayStats()
+            showSuccessMessage("Бронирование создано")
+            
+            analyticsService.logEvent(.manualBookingCreated, parameters: [
+                AnalyticsParameter.bookingId.rawValue: booking.id,
+                AnalyticsParameter.restaurantId.rawValue: restaurant?.id ?? "unknown"
+            ])
+            
+        } catch {
+            showError("Не удалось создать бронирование: \(error.localizedDescription)")
+        }
     }
 }
 
@@ -439,6 +583,31 @@ enum NotificationType: String, CaseIterable {
         case .review: return "Отзыв"
         case .ai: return "AI"
         case .system: return "Система"
+        }
+    }
+}
+
+enum ToastType {
+    case success
+    case error
+    case warning
+    case info
+    
+    var color: Color {
+        switch self {
+        case .success: return .green
+        case .error: return .red
+        case .warning: return .orange
+        case .info: return .blue
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .success: return "checkmark.circle.fill"
+        case .error: return "xmark.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .info: return "info.circle.fill"
         }
     }
 }

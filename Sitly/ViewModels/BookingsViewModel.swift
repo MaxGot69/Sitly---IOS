@@ -12,8 +12,8 @@ import Combine
 @MainActor
 class BookingsViewModel: ObservableObject {
     // MARK: - Published Properties
-    @Published var bookings: [BookingModel] = []
-    @Published var filteredBookings: [BookingModel] = []
+    @Published var bookings: [Booking] = []
+    @Published var filteredBookings: [Booking] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -124,7 +124,7 @@ class BookingsViewModel: ObservableObject {
     }
     
     // MARK: - Create Booking
-    func createBooking(_ booking: BookingModel) async {
+    func createBooking(_ booking: Booking) async {
         do {
             let createdBooking = try await bookingsService.createBooking(booking)
             HapticService.shared.notification(.success)
@@ -137,7 +137,7 @@ class BookingsViewModel: ObservableObject {
     }
     
     // MARK: - Update Booking
-    func updateBooking(_ booking: BookingModel) async {
+    func updateBooking(_ booking: Booking) async {
         do {
             try await bookingsService.updateBooking(booking)
             HapticService.shared.notification(.success)
@@ -150,7 +150,7 @@ class BookingsViewModel: ObservableObject {
     }
     
     // MARK: - Delete Booking
-    func deleteBooking(_ booking: BookingModel) async {
+    func deleteBooking(_ booking: Booking) async {
         do {
             try await bookingsService.deleteBooking(booking)
             HapticService.shared.notification(.success)
@@ -163,10 +163,10 @@ class BookingsViewModel: ObservableObject {
     }
     
     // MARK: - Get Analytics
-    func getAnalytics() async -> BookingAnalytics? {
+    func getAnalytics() async -> [String: Any]? {
         do {
             let analytics = try await bookingsService.getBookingAnalytics(for: restaurantId)
-            print("📊 Аналитика загружена: \(analytics.totalBookings) бронирований")
+            print("📊 Аналитика загружена: \(analytics["totalBookings"] ?? 0) бронирований")
             return analytics
         } catch {
             self.errorMessage = error.localizedDescription
@@ -176,11 +176,11 @@ class BookingsViewModel: ObservableObject {
     }
     
     // MARK: - Helper Methods
-    func getBookingsForDate(_ date: Date) -> [BookingModel] {
+    func getBookingsForDate(_ date: Date) -> [Booking] {
         return bookings.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
     }
     
-    func getBookingsForTimeSlot(_ timeSlot: String, date: Date) -> [BookingModel] {
+    func getBookingsForTimeSlot(_ timeSlot: String, date: Date) -> [Booking] {
         return bookings.filter { 
             $0.timeSlot == timeSlot && Calendar.current.isDate($0.date, inSameDayAs: date)
         }

@@ -1,148 +1,151 @@
+//
+//  StorageService.swift
+//  Sitly
+//
+//  Created by AI Assistant on 12.09.2025.
+//
+
 import Foundation
+import Combine
+
+// MARK: - Storage Service Protocol
+
+protocol StorageServiceProtocol {
+    func save<T: Codable>(_ object: T, forKey key: String) async throws
+    func save<T: Codable>(_ object: T, forKey key: String, expiration: TimeInterval) async throws
+    func load<T: Codable>(_ type: T.Type, forKey key: String) async throws -> T?
+    func delete(forKey key: String) async throws
+    func clear() async throws
+}
+
+// MARK: - Storage Service Implementation
 
 final class StorageService: StorageServiceProtocol {
     private let userDefaults = UserDefaults.standard
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let fileManager = FileManager.default
+    private let documentsDirectory: URL
     
     init() {
-        // Настройка JSON кодировщика
-        encoder.dateEncodingStrategy = .iso8601
-        decoder.dateDecodingStrategy = .iso8601
+        self.documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
     
-    // MARK: - Save
+    // MARK: - Save Methods
     
-    func save<T: Codable>(_ object: T, forKey key: String) throws {
+    func save<T: Codable>(_ object: T, forKey key: String) async throws {
         do {
-            let data = try encoder.encode(object)
+            let data = try JSONEncoder().encode(object)
             userDefaults.set(data, forKey: key)
+            print("💾 StorageService: Сохранено \(type(of: object)) для ключа '\(key)'")
         } catch {
-            throw StorageError.encodingError(error)
+            print("❌ StorageService: Ошибка сохранения - \(error)")
+            throw StorageError.saveFailed(error)
         }
     }
     
-    func save<T: Codable>(_ object: T, forKey key: String, expiration: TimeInterval) throws {
+    func save<T: Codable>(_ object: T, forKey key: String, expiration: TimeInterval) async throws {
         let expirationDate = Date().addingTimeInterval(expiration)
-        let storageItem = StorageItem(object: object, expirationDate: expirationDate)
-        try save(storageItem, forKey: key)
+        let wrapper = ExpirableWrapper(object: object, expirationDate: expirationDate)
+        try await save(wrapper, forKey: key)
     }
     
-    // MARK: - Load
+    // MARK: - Load Methods
     
-    func load<T: Codable>(forKey key: String) throws -> T? {
+    func load<T: Codable>(_ type: T.Type, forKey key: String) async throws -> T? {
         guard let data = userDefaults.data(forKey: key) else {
+            print("📭 StorageService: Данные не найдены для ключа '\(key)'")
             return nil
         }
         
         do {
-            // Пытаемся загрузить как обычный объект
-            let object = try decoder.decode(T.self, from: data)
+            let object = try JSONDecoder().decode(type, from: data)
+            print("📖 StorageService: Загружено \(type) для ключа '\(key)'")
             return object
         } catch {
-            // Если не получилось, пытаемся загрузить как StorageItem
-            do {
-                let storageItem = try decoder.decode(StorageItem<T>.self, from: data)
-                
-                // Проверяем срок действия
-                if storageItem.isExpired {
-                    remove(forKey: key)
-                    return nil
-                }
-                
-                return storageItem.object
-            } catch {
-                throw StorageError.decodingError(error)
-            }
+            print("❌ StorageService: Ошибка загрузки - \(error)")
+            throw StorageError.loadFailed(error)
         }
     }
     
-    // MARK: - Remove
+    // MARK: - Delete Methods
     
-    func remove(forKey key: String) {
+    func delete(forKey key: String) async throws {
         userDefaults.removeObject(forKey: key)
+        print("🗑️ StorageService: Удалено для ключа '\(key)'")
     }
     
-    func clear() {
-        // Получаем все ключи
-        let keys = userDefaults.dictionaryRepresentation().keys
-        
-        // Удаляем все ключи, кроме системных
-        for key in keys {
-            if !key.hasPrefix("Apple") && !key.hasPrefix("NS") && !key.hasPrefix("WebKit") {
-                userDefaults.removeObject(forKey: key)
-            }
-        }
+    func clear() async throws {
+        let domain = Bundle.main.bundleIdentifier!
+        userDefaults.removePersistentDomain(forName: domain)
+        userDefaults.synchronize()
+        print("🧹 StorageService: Очищены все данные")
     }
     
-    // MARK: - Utility Methods
+    // MARK: - Convenience Methods
     
-    func hasValue(forKey key: String) -> Bool {
-        return userDefaults.object(forKey: key) != nil
+    func saveUser(_ user: User) async throws {
+        try await save(user, forKey: Keys.user)
     }
     
-    func getKeys() -> [String] {
-        return Array(userDefaults.dictionaryRepresentation().keys)
+    func loadUser() async throws -> User? {
+        return try await load(User.self, forKey: Keys.user)
     }
     
-    func getSize(forKey key: String) -> Int {
-        guard let data = userDefaults.data(forKey: key) else { return 0 }
-        return data.count
+    func saveRestaurant(_ restaurant: Restaurant) async throws {
+        try await save(restaurant, forKey: Keys.restaurant)
     }
     
-    func getTotalSize() -> Int {
-        let keys = getKeys()
-        var totalSize = 0
-        
-        for key in keys {
-            totalSize += getSize(forKey: key)
-        }
-        
-        return totalSize
+    func loadRestaurant() async throws -> Restaurant? {
+        return try await load(Restaurant.self, forKey: Keys.restaurant)
     }
     
-    // MARK: - Migration
+    func saveBookings(_ bookings: [Booking]) async throws {
+        try await save(bookings, forKey: Keys.bookings)
+    }
     
-    func migrateData(from oldKey: String, to newKey: String) throws {
-        guard let data = userDefaults.data(forKey: oldKey) else { return }
-        
-        // Копируем данные под новым ключом
-        userDefaults.set(data, forKey: newKey)
-        
-        // Удаляем старый ключ
-        userDefaults.removeObject(forKey: oldKey)
+    func loadBookings() async throws -> [Booking]? {
+        return try await load([Booking].self, forKey: Keys.bookings)
     }
 }
 
-// MARK: - Storage Item
+// MARK: - Storage Keys
 
-private struct StorageItem<T: Codable>: Codable {
+private enum Keys {
+    static let user = "user"
+    static let restaurant = "restaurant"
+    static let bookings = "bookings"
+    static let settings = "settings"
+    static let cache = "cache"
+}
+
+// MARK: - Storage Errors
+
+enum StorageError: Error, LocalizedError {
+    case saveFailed(Error)
+    case loadFailed(Error)
+    case notFound
+    case expired
+    
+    var errorDescription: String? {
+        switch self {
+        case .saveFailed(let error):
+            return "Ошибка сохранения: \(error.localizedDescription)"
+        case .loadFailed(let error):
+            return "Ошибка загрузки: \(error.localizedDescription)"
+        case .notFound:
+            return "Данные не найдены"
+        case .expired:
+            return "Данные истекли"
+        }
+    }
+}
+
+// MARK: - Expirable Wrapper
+
+private struct ExpirableWrapper<T: Codable>: Codable {
     let object: T
     let expirationDate: Date
     
     var isExpired: Bool {
-        Date() > expirationDate
-    }
-}
-
-// MARK: - Storage Error
-
-enum StorageError: LocalizedError {
-    case encodingError(Error)
-    case decodingError(Error)
-    case keyNotFound
-    case invalidData
-    
-    var errorDescription: String? {
-        switch self {
-        case .encodingError(let error):
-            return "Ошибка кодирования: \(error.localizedDescription)"
-        case .decodingError(let error):
-            return "Ошибка декодирования: \(error.localizedDescription)"
-        case .keyNotFound:
-            return "Ключ не найден"
-        case .invalidData:
-            return "Некорректные данные"
-        }
+        return Date() > expirationDate
     }
 }

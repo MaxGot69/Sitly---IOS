@@ -43,6 +43,13 @@ enum AnalyticsEvent: String, CaseIterable {
     case screenViewed = "screen_viewed"
     case featureUsed = "feature_used"
     case errorOccurred = "error_occurred"
+    
+    // Dashboard Events
+    case manualBookingOpened = "manual_booking_opened"
+    case restaurantStatusChanged = "restaurant_status_changed"
+    case aiAssistantOpened = "ai_assistant_opened"
+    case bookingDetailOpened = "booking_detail_opened"
+    case manualBookingCreated = "manual_booking_created"
 }
 
 // MARK: - Analytics Parameters

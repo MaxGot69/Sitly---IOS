@@ -31,8 +31,13 @@ struct SitlyApp: App {
                             ClientMainView()
                                 .environmentObject(appState)
                         case .restaurant:
-                            ModernRestaurantMainView()
-                                .environmentObject(appState)
+                            if appState.hasCompletedOnboarding {
+                                ModernRestaurantMainView()
+                                    .environmentObject(appState)
+                            } else {
+                                RestaurantOnboardingView()
+                                    .environmentObject(appState)
+                            }
                         }
                     } else {
                         LoadingView()

@@ -198,7 +198,7 @@ class NotificationService: NSObject, NotificationServiceProtocol, ObservableObje
     }
     
     // MARK: - Convenience Methods
-    func sendNewBookingNotification(booking: BookingModel) {
+    func sendNewBookingNotification(booking: Booking) {
         let notification = NotificationData(
             type: .newBooking,
             body: "Новое бронирование на \(booking.timeSlot) для \(booking.guests) гостей",
@@ -212,7 +212,7 @@ class NotificationService: NSObject, NotificationServiceProtocol, ObservableObje
         sendNotification(notification)
     }
     
-    func sendBookingConfirmedNotification(booking: BookingModel) {
+    func sendBookingConfirmedNotification(booking: Booking) {
         let notification = NotificationData(
             type: .bookingConfirmed,
             body: "Бронирование подтверждено на \(booking.timeSlot)",
@@ -224,7 +224,7 @@ class NotificationService: NSObject, NotificationServiceProtocol, ObservableObje
         sendNotification(notification)
     }
     
-    func sendBookingCancelledNotification(booking: BookingModel) {
+    func sendBookingCancelledNotification(booking: Booking) {
         let notification = NotificationData(
             type: .bookingCancelled,
             body: "Бронирование отменено на \(booking.timeSlot)",

@@ -42,7 +42,7 @@ final class CacheService: CacheServiceProtocol {
         
         do {
             let data = try JSONEncoder().encode(entry)
-            try storageService.save(data, forKey: key)
+            try await storageService.save(data, forKey: key)
             
             // Обновляем память
             let cacheItem = CacheItem(data: data, timestamp: Date(), expiration: expiration)
@@ -70,7 +70,7 @@ final class CacheService: CacheServiceProtocol {
         
         // Проверяем хранилище
         do {
-            guard let data: Data = try storageService.load(forKey: key) else { return nil }
+            guard let data: Data = try await storageService.load(Data.self, forKey: key) else { return nil }
             let entry = try JSONDecoder().decode(CacheEntry<T>.self, from: data)
             
             if !entry.isExpired {
@@ -80,7 +80,7 @@ final class CacheService: CacheServiceProtocol {
                 return entry.data
             } else {
                 // Удаляем истекший элемент
-                try? storageService.remove(forKey: key)
+                try? await storageService.delete(forKey: key)
                 return nil
             }
         } catch {
@@ -91,12 +91,12 @@ final class CacheService: CacheServiceProtocol {
     
     func remove(forKey key: String) async {
         cache.removeObject(forKey: key as NSString)
-        storageService.remove(forKey: key)
+        try? await storageService.delete(forKey: key)
     }
     
     func clear() async {
         cache.removeAllObjects()
-        storageService.clear()
+        try? await storageService.clear()
     }
     
     func isExpired(forKey key: String) async -> Bool {
@@ -107,7 +107,7 @@ final class CacheService: CacheServiceProtocol {
         
         // Проверяем хранилище
         do {
-            guard let data: Data = try storageService.load(forKey: key) else { return true }
+            guard let data: Data = try await storageService.load(Data.self, forKey: key) else { return true }
             let entry = try JSONDecoder().decode(CacheEntry<Data>.self, from: data)
             return entry.isExpired
         } catch {

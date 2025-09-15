@@ -11,7 +11,7 @@ import Combine
 struct BookingsManagementView: View {
     @StateObject private var viewModel = BookingsViewModel()
     @State private var selectedFilter: RestaurantBookingFilter = .all
-    @State private var selectedBooking: BookingModel?
+    @State private var selectedBooking: Booking?
     @State private var showingFilters = false
     @State private var animateCards = false
     
@@ -245,7 +245,7 @@ struct BookingsManagementView: View {
         }
     }
     
-    private func bookingCard(booking: BookingModel, index: Int) -> some View {
+    private func bookingCard(booking: Booking, index: Int) -> some View {
         Button(action: {
             selectedBooking = booking
             HapticService.shared.selection()
@@ -278,7 +278,7 @@ struct BookingsManagementView: View {
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.6))
                         
-                        Text(booking.formattedDate)
+                        Text(booking.date, style: .date)
                             .font(.subheadline)
                             .foregroundColor(.white)
                         
@@ -300,7 +300,7 @@ struct BookingsManagementView: View {
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.6))
                         
-                        Text(booking.tableName)
+                        Text("Столик \(booking.tableId)")
                             .font(.subheadline)
                             .foregroundColor(.white)
                         
@@ -317,29 +317,25 @@ struct BookingsManagementView: View {
                 }
                 
                 // Быстрые действия
-                if booking.canBeConfirmed || booking.canBeCancelled {
+                if booking.status == .pending {
                     HStack(spacing: 12) {
-                        if booking.canBeConfirmed {
-                            quickActionButton(
-                                title: "Подтвердить",
-                                icon: "checkmark.circle.fill",
-                                color: .green
-                            ) {
-                                Task {
-                                    await viewModel.updateBookingStatus(booking.id, status: .confirmed)
-                                }
+                        quickActionButton(
+                            title: "Подтвердить",
+                            icon: "checkmark.circle.fill",
+                            color: .green
+                        ) {
+                            Task {
+                                await viewModel.updateBookingStatus(booking.id, status: .confirmed)
                             }
                         }
                         
-                        if booking.canBeCancelled {
-                            quickActionButton(
-                                title: "Отменить",
-                                icon: "xmark.circle.fill",
-                                color: .red
-                            ) {
-                                Task {
-                                    await viewModel.updateBookingStatus(booking.id, status: .cancelled)
-                                }
+                        quickActionButton(
+                            title: "Отменить",
+                            icon: "xmark.circle.fill",
+                            color: .red
+                        ) {
+                            Task {
+                                await viewModel.updateBookingStatus(booking.id, status: .cancelled)
                             }
                         }
                         
@@ -355,7 +351,7 @@ struct BookingsManagementView: View {
                                 
                                 Text(booking.paymentStatus.displayName)
                                     .font(.caption2)
-                                    .foregroundColor(booking.paymentStatus.color)
+                                    .foregroundColor(paymentStatusColor(for: booking.paymentStatus))
                             }
                         }
                     }
@@ -370,14 +366,14 @@ struct BookingsManagementView: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(
                             LinearGradient(
-                                colors: [booking.status.color.opacity(0.1), Color.clear],
+                                colors: [statusColor(for: booking.status).opacity(0.1), Color.clear],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                     
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(booking.status.color.opacity(0.3), lineWidth: 1)
+                        .stroke(statusColor(for: booking.status).opacity(0.3), lineWidth: 1)
                 }
             )
             .scaleEffect(animateCards ? 1.0 : 0.8)
@@ -388,7 +384,7 @@ struct BookingsManagementView: View {
     
     private func statusBadge(for status: BookingStatus) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: status.icon)
+            Image(systemName: statusIcon(for: status))
                 .font(.caption2)
             
             Text(status.displayName)
@@ -400,8 +396,37 @@ struct BookingsManagementView: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(status.color)
+                .fill(statusColor(for: status).opacity(0.8))
         )
+    }
+    
+    private func statusIcon(for status: BookingStatus) -> String {
+        switch status {
+        case .pending: return "clock.fill"
+        case .confirmed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        case .completed: return "checkmark.seal.fill"
+        case .noShow: return "person.crop.circle.badge.xmark"
+        }
+    }
+    
+    private func statusColor(for status: BookingStatus) -> Color {
+        switch status {
+        case .pending: return .orange
+        case .confirmed: return .green
+        case .cancelled: return .red
+        case .completed: return .blue
+        case .noShow: return .gray
+        }
+    }
+    
+    private func paymentStatusColor(for status: PaymentStatus) -> Color {
+        switch status {
+        case .unpaid: return .red
+        case .paid: return .green
+        case .pending: return .orange
+        case .refunded: return .blue
+        }
     }
     
     private func quickActionButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {

@@ -265,8 +265,6 @@ final class MockDataProvider {
                 clientName: "Анна Петрова",
                 clientPhone: "+7 (999) 123-45-67",
                 clientEmail: "anna@example.com",
-                tableName: "Стол 1",
-                tableCapacity: 2,
                 createdAt: Date(),
                 updatedAt: Date()
             ),
@@ -284,8 +282,6 @@ final class MockDataProvider {
                 clientName: "Михаил Иванов",
                 clientPhone: "+7 (999) 987-65-43",
                 clientEmail: "mikhail@example.com",
-                tableName: "VIP-1",
-                tableCapacity: 6,
                 createdAt: Date(),
                 updatedAt: Date()
             )

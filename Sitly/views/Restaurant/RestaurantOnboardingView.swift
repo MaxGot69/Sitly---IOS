@@ -10,6 +10,7 @@ import MapKit
 
 struct RestaurantOnboardingView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = RestaurantOnboardingViewModel()
     @State private var currentStep = 0
     @State private var showSuccess = false
@@ -74,9 +75,11 @@ struct RestaurantOnboardingView: View {
                 // Обновляем состояние приложения
                 appState.refreshUser()
                 
+                // Отмечаем что онбординг завершен
+                appState.completeOnboarding()
+                
                 // Закрываем экран онбординга
-                // Это произойдет автоматически, так как ModernRestaurantMainView
-                // проверит данные ресторана и покажет админку
+                dismiss()
             }
         } message: {
             Text("Ваш ресторан успешно создан и настроен! Теперь вы можете управлять столиками и бронированиями.")

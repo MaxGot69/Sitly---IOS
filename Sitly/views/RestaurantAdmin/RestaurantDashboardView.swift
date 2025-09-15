@@ -59,16 +59,39 @@ struct RestaurantDashboardView: View {
         .onChange(of: appState.currentUser?.id) { newUserId in
             viewModel.setCurrentUser(appState.currentUser)
         }
-        .sheet(isPresented: $showingProfile) {
-            Text("Профиль ресторана")
-                .font(.title)
-                .padding()
+        .sheet(isPresented: $viewModel.showingProfile) {
+            RestaurantOnboardingView()
         }
-        .sheet(isPresented: $showingSettings) {
-            Text("Настройки ресторана")
-                .font(.title)
-                .padding()
+        .sheet(isPresented: $viewModel.showingSettings) {
+            RestaurantSettingsView()
         }
+        .sheet(isPresented: $viewModel.showingManualBooking) {
+            ManualBookingView(restaurant: viewModel.restaurant) { booking in
+                Task {
+                    await viewModel.createBooking(booking)
+                }
+            }
+        }
+        .sheet(isPresented: $viewModel.showingAIAssistant) {
+            AIAssistantView()
+        }
+        .sheet(item: $viewModel.showingBookingDetail) { booking in
+            BookingDetailView(booking: booking, viewModel: BookingsViewModel())
+        }
+        .overlay(
+            // Toast уведомления
+            Group {
+                if viewModel.showToast {
+                    ToastView(
+                        message: viewModel.toastMessage,
+                        type: viewModel.toastType,
+                        onDismiss: { viewModel.hideToast() }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: viewModel.showToast)
+                }
+            }
+        )
     }
     
     // MARK: - Header Section
@@ -89,25 +112,41 @@ struct RestaurantDashboardView: View {
             
             Spacer()
             
-            // Профиль ресторана
-            Button(action: { showingProfile = true }) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.blue, .purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 50, height: 50)
-                    
-                    Image(systemName: "building.2.fill")
-                        .font(.title2)
-                        .foregroundColor(.white)
+            HStack(spacing: 12) {
+                // Настройки
+                Button(action: { viewModel.showingSettings = true }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: "gearshape.fill")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                    }
                 }
+                .buttonStyle(ScaleButtonStyle())
+                
+                // Профиль ресторана
+                Button(action: { viewModel.showingProfile = true }) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.blue, .purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 50, height: 50)
+                        
+                        Image(systemName: "building.2.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(ScaleButtonStyle())
             }
-            .buttonStyle(ScaleButtonStyle())
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
@@ -393,16 +432,49 @@ struct RestaurantDashboardView: View {
     // MARK: - Notifications Section
     private var notificationsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Уведомления")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
+            HStack {
+                Text("Уведомления")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                if !viewModel.notifications.isEmpty {
+                    Button("Все прочитано") {
+                        viewModel.markAllNotificationsAsRead()
+                    }
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(.blue.opacity(0.2))
+                    )
+                }
+            }
             
             VStack(spacing: 12) {
                 ForEach(viewModel.notifications) { notification in
                     NotificationCard(notification: notification) {
                         viewModel.handleNotification(notification)
                     }
+                }
+                
+                if viewModel.notifications.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "bell.slash")
+                            .font(.title)
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text("Нет новых уведомлений")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
                 }
             }
         }
@@ -593,7 +665,7 @@ struct UpcomingBookingCard: View {
             
             HStack {
                 Button("Подтвердить") {
-                    // Подтвердить бронь
+                    action()
                 }
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -604,9 +676,10 @@ struct UpcomingBookingCard: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.green.opacity(0.2))
                 )
+                .buttonStyle(ScaleButtonStyle())
                 
                 Button("Отклонить") {
-                    // Отклонить бронь
+                    action()
                 }
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -617,6 +690,7 @@ struct UpcomingBookingCard: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.red.opacity(0.2))
                 )
+                .buttonStyle(ScaleButtonStyle())
             }
         }
         .padding(16)
@@ -700,7 +774,46 @@ struct NotificationCard: View {
     }
 }
 
-// MARK: - Button Styles
+// MARK: - Toast View
+struct ToastView: View {
+    let message: String
+    let type: ToastType
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: type.icon)
+                .font(.title3)
+                .foregroundColor(type.color)
+            
+            Text(message)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.leading)
+            
+            Spacer()
+            
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(type.color.opacity(0.3), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+    }
+}
 
 
 // MARK: - Preview

@@ -172,6 +172,27 @@ final class NetworkService: NetworkServiceProtocol {
             let newReview = review
             let newReviewData = try JSONEncoder().encode(newReview)
             return try JSONDecoder().decode(Review.self, from: newReviewData) as! T
+            
+        case .updateRestaurant(let restaurant):
+            let restaurantData = try JSONEncoder().encode(restaurant)
+            let restaurantDict = try JSONSerialization.jsonObject(with: restaurantData) as? [String: Any] ?? [:]
+            
+            // Преобразуем координаты для Firestore
+            var firestoreData = restaurantDict
+            firestoreData.removeValue(forKey: "id")
+            
+            // Преобразуем координаты в GeoPoint
+            if let latitude = firestoreData["latitude"] as? Double,
+               let longitude = firestoreData["longitude"] as? Double {
+                firestoreData["coordinate"] = GeoPoint(latitude: latitude, longitude: longitude)
+                firestoreData.removeValue(forKey: "latitude")
+                firestoreData.removeValue(forKey: "longitude")
+            }
+            
+            // Обновляем документ
+            try await db.collection("restaurants").document(restaurant.id).setData(firestoreData, merge: true)
+            
+            return restaurant as! T
         }
     }
 }
@@ -186,6 +207,7 @@ enum FirebaseEndpoint: APIEndpoint {
     case createBooking(Booking)
     case getRestaurantReviews(String)
     case createReview(Review)
+    case updateRestaurant(Restaurant)
     
     var path: String {
         switch self {
@@ -203,6 +225,8 @@ enum FirebaseEndpoint: APIEndpoint {
             return "/reviews"
         case .createReview:
             return "/reviews"
+        case .updateRestaurant(let restaurant):
+            return "/restaurants/\(restaurant.id)"
         }
     }
     
@@ -212,6 +236,8 @@ enum FirebaseEndpoint: APIEndpoint {
             return .GET
         case .createBooking, .createReview:
             return .POST
+        case .updateRestaurant:
+            return .PUT
         }
     }
     

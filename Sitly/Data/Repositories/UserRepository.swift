@@ -93,7 +93,7 @@ final class UserRepository: UserRepositoryProtocol {
                 let user = try JSONDecoder().decode(User.self, from: jsonData)
                 
                 // Сохраняем в локальное хранилище
-                try storageService.save(user, forKey: "currentUser")
+                try await storageService.save(user, forKey: "currentUser")
                 
                 return user
             } else {
@@ -117,7 +117,7 @@ final class UserRepository: UserRepositoryProtocol {
                 )
                 
                 let createdUser = try await createUser(user)
-                try storageService.save(createdUser, forKey: "currentUser")
+                try await storageService.save(createdUser, forKey: "currentUser")
                 return createdUser
             }
         } catch let error as NSError {
@@ -169,7 +169,7 @@ final class UserRepository: UserRepositoryProtocol {
             )
             
             let createdUser = try await createUser(user)
-            try storageService.save(createdUser, forKey: "currentUser")
+            try await storageService.save(createdUser, forKey: "currentUser")
             
             // Отправляем email верификации
             try await firebaseUser.sendEmailVerification()
@@ -228,7 +228,7 @@ final class UserRepository: UserRepositoryProtocol {
                 print("✅ Firestore документ создан")
                 
                 print("✅ Сохраняем в локальное хранилище...")
-                try storageService.save(createdUser, forKey: "currentUser")
+                try await storageService.save(createdUser, forKey: "currentUser")
                 
                 print("✅ Регистрация завершена успешно!")
                 return createdUser
@@ -237,7 +237,7 @@ final class UserRepository: UserRepositoryProtocol {
                 print("✅ Сохраняем пользователя только локально...")
                 
                 // Сохраняем локально даже если Firestore не работает
-                try storageService.save(user, forKey: "currentUser")
+                try await storageService.save(user, forKey: "currentUser")
                 
                 print("✅ Регистрация завершена (без Firestore)!")
                 return user

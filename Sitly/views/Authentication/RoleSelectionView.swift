@@ -177,6 +177,8 @@ struct RoleSelectionView: View {
                 
                 // Если роль ресторан - показываем onboarding
                 if selectedRole == .restaurant {
+                    // Устанавливаем что онбординг не завершен
+                    appState.hasCompletedOnboarding = false
                     showRestaurantOnboarding = true
                 } else {
                     // Для клиентов сразу успешная авторизация

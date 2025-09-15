@@ -9,45 +9,76 @@ final class AppState: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoading = false
     @Published var showOnboarding = false
+    @Published var hasCompletedOnboarding = false
+    @Published var authToken: String?
+    @Published var refreshToken: String?
     
     // MARK: - Private Properties
     private let userUseCase: UserUseCaseProtocol
     private let storageService: StorageServiceProtocol
     private let auth = Auth.auth()
     
-    // MARK: - Computed Properties
-    var hasCompletedOnboarding: Bool {
-        get {
-            (try? storageService.load(forKey: "hasCompletedOnboarding")) ?? false
-        }
-        set {
-            try? storageService.save(newValue, forKey: "hasCompletedOnboarding")
+    // MARK: - Private Methods for Storage
+    private func loadStoredData() async {
+        do {
+            let onboardingStatus = (try await storageService.load(Bool.self, forKey: "hasCompletedOnboarding")) ?? false
+            let authTokenValue = try await storageService.load(String.self, forKey: "authToken")
+            let refreshTokenValue = try await storageService.load(String.self, forKey: "refreshToken")
+            
+            await MainActor.run {
+                hasCompletedOnboarding = onboardingStatus
+                authToken = authTokenValue
+                refreshToken = refreshTokenValue
+            }
+        } catch {
+            print("❌ Ошибка загрузки данных из хранилища: \(error)")
         }
     }
     
-    var authToken: String? {
-        get {
-            try? storageService.load(forKey: "authToken")
-        }
-        set {
-            if let token = newValue {
-                try? storageService.save(token, forKey: "authToken")
-            } else {
-                storageService.remove(forKey: "authToken")
+    private func saveOnboardingStatus(_ completed: Bool) async {
+        do {
+            try await storageService.save(completed, forKey: "hasCompletedOnboarding")
+            await MainActor.run {
+                hasCompletedOnboarding = completed
             }
+        } catch {
+            print("❌ Ошибка сохранения статуса онбординга: \(error)")
         }
     }
     
-    var refreshToken: String? {
-        get {
-            try? storageService.load(forKey: "refreshToken")
-        }
-        set {
-            if let token = newValue {
-                try? storageService.save(token, forKey: "refreshToken")
+    private func saveAuthToken(_ token: String?) async {
+        do {
+            if let token = token {
+                try await storageService.save(token, forKey: "authToken")
+                await MainActor.run {
+                    authToken = token
+                }
             } else {
-                storageService.remove(forKey: "refreshToken")
+                try await storageService.delete(forKey: "authToken")
+                await MainActor.run {
+                    authToken = nil
+                }
             }
+        } catch {
+            print("❌ Ошибка сохранения токена: \(error)")
+        }
+    }
+    
+    private func saveRefreshToken(_ token: String?) async {
+        do {
+            if let token = token {
+                try await storageService.save(token, forKey: "refreshToken")
+                await MainActor.run {
+                    refreshToken = token
+                }
+            } else {
+                try await storageService.delete(forKey: "refreshToken")
+                await MainActor.run {
+                    refreshToken = nil
+                }
+            }
+        } catch {
+            print("❌ Ошибка сохранения refresh токена: \(error)")
         }
     }
     
@@ -58,6 +89,11 @@ final class AppState: ObservableObject {
         
         // Настраиваем слушатель состояния аутентификации
         setupAuthStateListener()
+        
+        // Загружаем сохраненные данные
+        Task {
+            await loadStoredData()
+        }
         
         // Проверяем состояние при запуске
         print("🔥 Firebase: Проверяем подключение...")
@@ -219,8 +255,12 @@ final class AppState: ObservableObject {
     }
     
     func completeOnboarding() {
-        hasCompletedOnboarding = true
-        showOnboarding = false
+        Task {
+            await saveOnboardingStatus(true)
+            await MainActor.run {
+                showOnboarding = false
+            }
+        }
     }
     
     // MARK: - Private Methods
@@ -245,9 +285,13 @@ final class AppState: ObservableObject {
     }
     
     private func clearAuthData() {
-        authToken = nil
-        refreshToken = nil
-        currentUser = nil
+        Task {
+            await saveAuthToken(nil)
+            await saveRefreshToken(nil)
+            await MainActor.run {
+                currentUser = nil
+            }
+        }
     }
     
     // MARK: - Refresh Methods

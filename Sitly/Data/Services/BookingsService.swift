@@ -10,13 +10,13 @@ import FirebaseFirestore
 import Combine
 
 protocol BookingsServiceProtocol {
-    func fetchBookings(for restaurantId: String) async throws -> [BookingModel]
-    func createBooking(_ booking: BookingModel) async throws -> BookingModel
-    func updateBooking(_ booking: BookingModel) async throws
-    func deleteBooking(_ booking: BookingModel) async throws
+    func fetchBookings(for restaurantId: String) async throws -> [Booking]
+    func createBooking(_ booking: Booking) async throws -> Booking
+    func updateBooking(_ booking: Booking) async throws
+    func deleteBooking(_ booking: Booking) async throws
     func updateBookingStatus(_ bookingId: String, status: BookingStatus, restaurantId: String) async throws
-    func observeBookings(for restaurantId: String) -> AnyPublisher<[BookingModel], Error>
-    func getBookingAnalytics(for restaurantId: String) async throws -> BookingAnalytics
+    func observeBookings(for restaurantId: String) -> AnyPublisher<[Booking], Error>
+    func getBookingAnalytics(for restaurantId: String) async throws -> [String: Any]
 }
 
 class BookingsService: BookingsServiceProtocol {
@@ -32,7 +32,7 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Fetch Bookings
-    func fetchBookings(for restaurantId: String) async throws -> [BookingModel] {
+    func fetchBookings(for restaurantId: String) async throws -> [Booking] {
         print("📅 Загружаем бронирования для ресторана: \(restaurantId)")
         
         let snapshot = try await db
@@ -42,7 +42,7 @@ class BookingsService: BookingsServiceProtocol {
             .order(by: "date", descending: false)
             .getDocuments()
         
-        let bookings = try snapshot.documents.compactMap { document -> BookingModel? in
+        let bookings = try snapshot.documents.compactMap { document -> Booking? in
             var data = document.data()
             data["id"] = document.documentID
             
@@ -58,7 +58,7 @@ class BookingsService: BookingsServiceProtocol {
             }
             
             let jsonData = try JSONSerialization.data(withJSONObject: data)
-            return try JSONDecoder().decode(BookingModel.self, from: jsonData)
+            return try JSONDecoder().decode(Booking.self, from: jsonData)
         }
         
         print("✅ Загружено бронирований: \(bookings.count)")
@@ -66,12 +66,27 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Create Booking
-    func createBooking(_ booking: BookingModel) async throws -> BookingModel {
-        print("➕ Создаем бронирование: \(booking.clientName) на \(booking.formattedDate)")
+    func createBooking(_ booking: Booking) async throws -> Booking {
+        print("➕ Создаем бронирование: \(booking.clientName) на \(booking.date)")
         
-        var bookingData = booking
-        bookingData.createdAt = Date()
-        bookingData.updatedAt = Date()
+        let bookingData = Booking(
+            id: booking.id,
+            restaurantId: booking.restaurantId,
+            clientId: booking.clientId,
+            tableId: booking.tableId,
+            date: booking.date,
+            timeSlot: booking.timeSlot,
+            guests: booking.guests,
+            status: booking.status,
+            specialRequests: booking.specialRequests,
+            totalPrice: booking.totalPrice,
+            paymentStatus: booking.paymentStatus,
+            clientName: booking.clientName,
+            clientPhone: booking.clientPhone,
+            clientEmail: booking.clientEmail,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
         
         let jsonData = try JSONEncoder().encode(bookingData)
         var data = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] ?? [:]
@@ -110,7 +125,7 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Update Booking
-    func updateBooking(_ booking: BookingModel) async throws {
+    func updateBooking(_ booking: Booking) async throws {
         print("🔄 Обновляем бронирование: \(booking.id)")
         
         var updatedBooking = booking
@@ -134,7 +149,7 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Delete Booking
-    func deleteBooking(_ booking: BookingModel) async throws {
+    func deleteBooking(_ booking: Booking) async throws {
         print("🗑️ Удаляем бронирование: \(booking.id)")
         
         try await db
@@ -193,10 +208,10 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Real-time Observations
-    func observeBookings(for restaurantId: String) -> AnyPublisher<[BookingModel], Error> {
+    func observeBookings(for restaurantId: String) -> AnyPublisher<[Booking], Error> {
         print("👀 Настраиваем наблюдение за бронированиями ресторана: \(restaurantId)")
         
-        return Future<[BookingModel], Error> { promise in
+        return Future<[Booking], Error> { promise in
             let listener = self.db
                 .collection("restaurants")
                 .document(restaurantId)
@@ -215,7 +230,7 @@ class BookingsService: BookingsServiceProtocol {
                     }
                     
                     do {
-                        let bookings = try documents.compactMap { document -> BookingModel? in
+                        let bookings = try documents.compactMap { document -> Booking? in
                             var data = document.data()
                             data["id"] = document.documentID
                             
@@ -231,7 +246,7 @@ class BookingsService: BookingsServiceProtocol {
                             }
                             
                             let jsonData = try JSONSerialization.data(withJSONObject: data)
-                            return try JSONDecoder().decode(BookingModel.self, from: jsonData)
+                            return try JSONDecoder().decode(Booking.self, from: jsonData)
                         }
                         
                         print("📊 Обновлено бронирований: \(bookings.count)")
@@ -249,7 +264,7 @@ class BookingsService: BookingsServiceProtocol {
     }
     
     // MARK: - Analytics
-    func getBookingAnalytics(for restaurantId: String) async throws -> BookingAnalytics {
+    func getBookingAnalytics(for restaurantId: String) async throws -> [String: Any] {
         print("📊 Получаем аналитику бронирований для ресторана: \(restaurantId)")
         
         let bookings = try await fetchBookings(for: restaurantId)
@@ -271,23 +286,23 @@ class BookingsService: BookingsServiceProtocol {
         // Популярные столики
         var tableCounts: [String: Int] = [:]
         for booking in bookings {
-            tableCounts[booking.tableName, default: 0] += 1
+            tableCounts[booking.tableId, default: 0] += 1
         }
         
-        return BookingAnalytics(
-            totalBookings: totalBookings,
-            confirmedBookings: confirmedBookings,
-            cancelledBookings: cancelledBookings,
-            noShowBookings: noShowBookings,
-            averagePartySize: averagePartySize,
-            totalRevenue: totalRevenue,
-            popularTimeSlots: timeSlotCounts,
-            popularTables: tableCounts
-        )
+        return [
+            "totalBookings": totalBookings,
+            "confirmedBookings": confirmedBookings,
+            "cancelledBookings": cancelledBookings,
+            "noShowBookings": noShowBookings,
+            "averagePartySize": averagePartySize,
+            "totalRevenue": totalRevenue,
+            "popularTimeSlots": timeSlotCounts,
+            "popularTables": tableCounts
+        ] as [String: Any]
     }
     
     // MARK: - Helper Methods
-    private func fetchBooking(bookingId: String, restaurantId: String) async throws -> BookingModel {
+    private func fetchBooking(bookingId: String, restaurantId: String) async throws -> Booking {
         let document = try await db
             .collection("restaurants")
             .document(restaurantId)
@@ -314,11 +329,11 @@ class BookingsService: BookingsServiceProtocol {
         }
         
         let jsonData = try JSONSerialization.data(withJSONObject: bookingData)
-        return try JSONDecoder().decode(BookingModel.self, from: jsonData)
+        return try JSONDecoder().decode(Booking.self, from: jsonData)
     }
     
     // MARK: - Notifications
-    private func sendBookingNotification(booking: BookingModel, type: BookingNotificationType) async {
+    private func sendBookingNotification(booking: Booking, type: BookingNotificationType) async {
         print("🔔 Отправляем уведомление: \(type.rawValue)")
         
         let notification: NotificationData
@@ -382,8 +397,8 @@ class BookingsService: BookingsServiceProtocol {
 
 // MARK: - Mock Service for Development
 class MockBookingsService: BookingsServiceProtocol {
-    private var mockBookings: [BookingModel] = []
-    private let subject = PassthroughSubject<[BookingModel], Error>()
+    private var mockBookings: [Booking] = []
+    private let subject = PassthroughSubject<[Booking], Error>()
     
     init() {
         generateMockBookings()
@@ -394,7 +409,7 @@ class MockBookingsService: BookingsServiceProtocol {
         let today = Date()
         
         mockBookings = [
-            BookingModel(
+            Booking(
                 restaurantId: "demo-restaurant",
                 clientId: "client1",
                 tableId: "table1",
@@ -408,12 +423,10 @@ class MockBookingsService: BookingsServiceProtocol {
                 clientName: "Анна Петрова",
                 clientPhone: "+7 (999) 123-45-67",
                 clientEmail: "anna@example.com",
-                tableName: "Стол 1",
-                tableCapacity: 2,
                 createdAt: Date(),
                 updatedAt: Date()
             ),
-            BookingModel(
+            Booking(
                 restaurantId: "demo-restaurant",
                 clientId: "client2",
                 tableId: "table2",
@@ -427,12 +440,10 @@ class MockBookingsService: BookingsServiceProtocol {
                 clientName: "Михаил Иванов",
                 clientPhone: "+7 (999) 987-65-43",
                 clientEmail: "mikhail@example.com",
-                tableName: "VIP-1",
-                tableCapacity: 6,
                 createdAt: Date(),
                 updatedAt: Date()
             ),
-            BookingModel(
+            Booking(
                 restaurantId: "demo-restaurant",
                 clientId: "client3",
                 tableId: "table3",
@@ -446,20 +457,18 @@ class MockBookingsService: BookingsServiceProtocol {
                 clientName: "Елена Соколова",
                 clientPhone: "+7 (999) 555-12-34",
                 clientEmail: "elena@example.com",
-                tableName: "Терраса 1",
-                tableCapacity: 4,
                 createdAt: Date(),
                 updatedAt: Date()
             )
         ]
     }
     
-    func fetchBookings(for restaurantId: String) async throws -> [BookingModel] {
+    func fetchBookings(for restaurantId: String) async throws -> [Booking] {
         try await Task.sleep(nanoseconds: 500_000_000)
         return mockBookings
     }
     
-    func createBooking(_ booking: BookingModel) async throws -> BookingModel {
+    func createBooking(_ booking: Booking) async throws -> Booking {
         try await Task.sleep(nanoseconds: 300_000_000)
         
         var newBooking = booking
@@ -470,7 +479,7 @@ class MockBookingsService: BookingsServiceProtocol {
         return newBooking
     }
     
-    func updateBooking(_ booking: BookingModel) async throws {
+    func updateBooking(_ booking: Booking) async throws {
         try await Task.sleep(nanoseconds: 300_000_000)
         
         if let index = mockBookings.firstIndex(where: { $0.id == booking.id }) {
@@ -479,7 +488,7 @@ class MockBookingsService: BookingsServiceProtocol {
         }
     }
     
-    func deleteBooking(_ booking: BookingModel) async throws {
+    func deleteBooking(_ booking: Booking) async throws {
         try await Task.sleep(nanoseconds: 300_000_000)
         
         mockBookings.removeAll { $0.id == booking.id }
@@ -496,7 +505,7 @@ class MockBookingsService: BookingsServiceProtocol {
         }
     }
     
-    func observeBookings(for restaurantId: String) -> AnyPublisher<[BookingModel], Error> {
+    func observeBookings(for restaurantId: String) -> AnyPublisher<[Booking], Error> {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.subject.send(self.mockBookings)
         }
@@ -504,7 +513,7 @@ class MockBookingsService: BookingsServiceProtocol {
         return subject.eraseToAnyPublisher()
     }
     
-    func getBookingAnalytics(for restaurantId: String) async throws -> BookingAnalytics {
+    func getBookingAnalytics(for restaurantId: String) async throws -> [String: Any] {
         try await Task.sleep(nanoseconds: 300_000_000)
         
         let confirmed = mockBookings.filter { $0.status == .confirmed }.count
@@ -513,16 +522,16 @@ class MockBookingsService: BookingsServiceProtocol {
         let avgPartySize = mockBookings.isEmpty ? 0.0 : Double(mockBookings.reduce(0) { $0 + $1.guests }) / Double(mockBookings.count)
         let revenue = mockBookings.filter { $0.paymentStatus == .paid }.reduce(0.0) { $0 + $1.totalPrice }
         
-        return BookingAnalytics(
-            totalBookings: mockBookings.count,
-            confirmedBookings: confirmed,
-            cancelledBookings: cancelled,
-            noShowBookings: noShow,
-            averagePartySize: avgPartySize,
-            totalRevenue: revenue,
-            popularTimeSlots: ["18:00-20:00": 5, "20:00-22:00": 3],
-            popularTables: ["VIP-1": 8, "Стол 1": 6, "Терраса 1": 4]
-        )
+        return [
+            "totalBookings": mockBookings.count,
+            "confirmedBookings": confirmed,
+            "cancelledBookings": cancelled,
+            "noShowBookings": noShow,
+            "averagePartySize": avgPartySize,
+            "totalRevenue": revenue,
+            "popularTimeSlots": ["18:00-20:00": 5, "20:00-22:00": 3],
+            "popularTables": ["VIP-1": 8, "Стол 1": 6, "Терраса 1": 4]
+        ] as [String: Any]
     }
 }
 

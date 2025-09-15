@@ -71,8 +71,6 @@ final class BookingUseCase: BookingUseCaseProtocol {
             clientName: "Клиент",
             clientPhone: contactPhone,
             clientEmail: "client@example.com",
-            tableName: "Стол",
-            tableCapacity: guestCount,
             createdAt: Date(),
             updatedAt: Date()
         )
@@ -91,7 +89,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
         }
     }
     
-    func getUserBookings(userId: String) async throws -> [BookingModel] {
+    func getUserBookings(userId: String) async throws -> [Booking] {
         do {
             let bookings = try await repository.fetchUserBookings(userId: userId)
             
@@ -102,7 +100,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
         }
     }
     
-    func getRestaurantBookings(restaurantId: String) async throws -> [BookingModel] {
+    func getRestaurantBookings(restaurantId: String) async throws -> [Booking] {
         do {
             let bookings = try await repository.fetchRestaurantBookings(restaurantId: restaurantId)
             
@@ -113,7 +111,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
         }
     }
     
-    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> BookingModel {
+    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> Booking {
         do {
             let updatedBooking = try await repository.updateBookingStatus(bookingId: bookingId, status: status)
             
@@ -128,7 +126,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
         }
     }
     
-    func cancelBooking(bookingId: String) async throws -> BookingModel {
+    func cancelBooking(bookingId: String) async throws -> Booking {
         do {
             let cancelledBooking = try await repository.cancelBooking(bookingId: bookingId)
             
@@ -154,7 +152,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
     
     // MARK: - Additional Booking Methods
     
-    func getUpcomingBookings(userId: String) async throws -> [BookingModel] {
+    func getUpcomingBookings(userId: String) async throws -> [Booking] {
         let allBookings = try await getUserBookings(userId: userId)
         
         // Фильтруем только предстоящие бронирования
@@ -166,7 +164,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
         return upcomingBookings.sorted { $0.date < $1.date }
     }
     
-    func getPastBookings(userId: String) async throws -> [BookingModel] {
+    func getPastBookings(userId: String) async throws -> [Booking] {
         let allBookings = try await getUserBookings(userId: userId)
         
         // Фильтруем только завершенные бронирования
@@ -178,12 +176,12 @@ final class BookingUseCase: BookingUseCaseProtocol {
         return pastBookings.sorted { $0.date > $1.date }
     }
     
-    func getBookingsByStatus(userId: String, status: BookingStatus) async throws -> [BookingModel] {
+    func getBookingsByStatus(userId: String, status: BookingStatus) async throws -> [Booking] {
         let allBookings = try await getUserBookings(userId: userId)
         return allBookings.filter { $0.status == status }
     }
     
-    func getBookingsForDate(userId: String, date: Date) async throws -> [BookingModel] {
+    func getBookingsForDate(userId: String, date: Date) async throws -> [Booking] {
         let allBookings = try await getUserBookings(userId: userId)
         
         let calendar = Calendar.current
@@ -194,7 +192,7 @@ final class BookingUseCase: BookingUseCaseProtocol {
     
     // MARK: - Business Logic Methods
     
-    func canModifyBooking(_ booking: BookingModel) -> Bool {
+    func canModifyBooking(_ booking: Booking) -> Bool {
         // Проверяем, можно ли изменить бронирование
         guard booking.status == .pending || booking.status == .confirmed else { return false }
         

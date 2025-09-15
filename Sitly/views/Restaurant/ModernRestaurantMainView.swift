@@ -6,7 +6,9 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
 import Combine
+import CoreLocation
 
 extension Foundation.Notification.Name {
     static let restaurantCreated = Foundation.Notification.Name("restaurantCreated")
@@ -18,6 +20,7 @@ struct ModernRestaurantMainView: View {
     @State private var tabOffset: CGFloat = 0
     @State private var isGlowing = false
     @State private var restaurantName = "Ресторан"
+    @State private var restaurantInfo: RestaurantModel? = nil
     
     var body: some View {
         ZStack {
@@ -31,7 +34,7 @@ struct ModernRestaurantMainView: View {
                 // Основной контент
                 TabView(selection: $selectedTab) {
                     // Dashboard 2026
-                    ModernDashboardView()
+                    ModernDashboardView(selectedTab: $selectedTab)
                         .tag(0)
                     
                     // Управление столиками
@@ -47,7 +50,7 @@ struct ModernRestaurantMainView: View {
                         .tag(3)
                     
                     // Профиль ресторана
-                    ModernRestaurantProfileView()
+                    ModernRestaurantProfileView(restaurantName: restaurantName, restaurantInfo: restaurantInfo)
                         .tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -62,16 +65,21 @@ struct ModernRestaurantMainView: View {
                 isGlowing.toggle()
             }
             
-            // Загружаем название ресторана
+            // Загружаем название ресторана и данные
             loadRestaurantName()
+            loadRestaurantInfo()
         }
         .onChange(of: appState.currentUser?.id) { _, _ in
-            // Обновляем название при смене пользователя
+            // Обновляем название и данные при смене пользователя
             loadRestaurantName()
+            loadRestaurantInfo()
         }
         .onReceive(NotificationCenter.default.publisher(for: Foundation.Notification.Name.restaurantCreated)) { _ in
-            // Обновляем название после создания ресторана
-            loadRestaurantName()
+            // Обновляем название и данные после создания ресторана
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                loadRestaurantName()
+                loadRestaurantInfo()
+            }
         }
     }
     
@@ -81,22 +89,93 @@ struct ModernRestaurantMainView: View {
             guard let userId = appState.currentUser?.id else { return }
             
             do {
-                let restaurantUseCase = RestaurantUseCase(
-                    repository: RestaurantRepository(
-                        networkService: NetworkService(),
-                        storageService: StorageService(),
-                        cacheService: CacheService(storageService: StorageService())
-                    ),
-                    locationService: LocationService()
-                )
-                let restaurants = try await restaurantUseCase.getRestaurants()
-                let userRestaurants = restaurants.filter { $0.ownerId == userId }
+                print("🔍 Загружаем название ресторана для пользователя: \(userId)")
                 
-                if let firstRestaurant = userRestaurants.first {
-                    restaurantName = firstRestaurant.name
+                // Загружаем напрямую из Firestore (как сохраняется)
+                let db = Firestore.firestore()
+                let snapshot = try await db.collection("restaurants")
+                    .whereField("ownerId", isEqualTo: userId)
+                    .getDocuments()
+                
+                print("📊 Найдено документов в Firestore: \(snapshot.documents.count)")
+                
+                if let firstDoc = snapshot.documents.first {
+                    do {
+                            let restaurantData = try firstDoc.data(as: RestaurantModel.self)
+                        print("✅ Найден ресторан в Firestore: \(restaurantData.name)")
+                        await MainActor.run {
+                            restaurantName = restaurantData.name
+                        }
+                    } catch {
+                        print("❌ Ошибка парсинга ресторана: \(error)")
+                    }
+                } else {
+                    print("❌ Ресторан не найден в Firestore для пользователя")
                 }
             } catch {
                 print("❌ Ошибка загрузки названия ресторана: \(error)")
+            }
+        }
+    }
+    
+    private func loadRestaurantInfo() {
+        Task {
+            do {
+                print("🔍 Загружаем информацию о ресторане для пользователя: \(appState.currentUser?.id ?? "НЕТ ID")")
+                
+                // Загружаем напрямую из Firestore (как сохраняется)
+                let db = Firestore.firestore()
+                let snapshot = try await db.collection("restaurants")
+                    .whereField("ownerId", isEqualTo: appState.currentUser?.id ?? "")
+                    .getDocuments()
+                
+                print("📊 Найдено документов в Firestore: \(snapshot.documents.count)")
+                
+                // Дополнительная отладка
+                for (index, doc) in snapshot.documents.enumerated() {
+                    print("📄 Документ \(index): \(doc.documentID)")
+                    print("📄 Данные: \(doc.data())")
+                }
+                
+                await MainActor.run {
+                    if let firstDoc = snapshot.documents.first {
+                        do {
+                            // Парсим данные вручную из нового формата
+                            let data = firstDoc.data()
+                            let restaurantData = RestaurantModel(
+                                id: data["id"] as? String ?? "",
+                                name: data["name"] as? String ?? "",
+                                description: data["description"] as? String ?? "",
+                                cuisineType: CuisineType(rawValue: data["cuisineType"] as? String ?? "european") ?? .european,
+                                address: data["address"] as? String ?? "",
+                                coordinates: CLLocationCoordinate2D(
+                                    latitude: data["latitude"] as? Double ?? 0.0,
+                                    longitude: data["longitude"] as? Double ?? 0.0
+                                ),
+                                phoneNumber: data["phoneNumber"] as? String ?? "",
+                                priceRange: PriceRange(rawValue: data["priceRange"] as? String ?? "medium") ?? .medium,
+                                workingHours: WorkingHours(), // Упрощаем для тестирования
+                                ownerId: data["ownerId"] as? String ?? "",
+                                status: RestaurantStatus(rawValue: data["status"] as? String ?? "pending") ?? .pending
+                            )
+                            print("✅ Найден ресторан в Firestore: \(restaurantData.name)")
+                            print("✅ Данные ресторана: \(restaurantData)")
+                            restaurantInfo = restaurantData
+                        } catch {
+                            print("❌ Ошибка парсинга ресторана: \(error)")
+                            print("❌ Сырые данные документа: \(firstDoc.data())")
+                            restaurantInfo = nil
+                        }
+                    } else {
+                        print("❌ Ресторан не найден в Firestore для пользователя")
+                        restaurantInfo = nil
+                    }
+                }
+            } catch {
+                print("❌ Ошибка загрузки информации о ресторане: \(error)")
+                await MainActor.run {
+                    restaurantInfo = nil
+                }
             }
         }
     }
@@ -174,25 +253,6 @@ struct ModernRestaurantMainView: View {
             
             Spacer()
             
-            // Кнопка выхода
-            Button(action: {
-                HapticService.shared.buttonPress()
-                appState.logout()
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color.red.opacity(0.3))
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.red.opacity(0.5), lineWidth: 1)
-                        )
-                    
-                    Image(systemName: "power")
-                        .font(.system(size: 18))
-                        .foregroundColor(.red)
-                }
-            }
             
             // Уведомления
             Button(action: {
@@ -354,6 +414,7 @@ struct ModernRestaurantMainView: View {
 
 // MARK: - Modern Dashboard View
 struct ModernDashboardView: View {
+    @Binding var selectedTab: Int
     @State private var animateCards = false
     
     var body: some View {
@@ -397,7 +458,13 @@ struct ModernDashboardView: View {
                     subtitle: "0 броней",
                     icon: "checkmark.circle.fill",
                     gradient: [.green, .mint],
-                    index: 0
+                    index: 0,
+                    action: {
+                        // Переключиться на таб бронирований
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            self.selectedTab = 2
+                        }
+                    }
                 )
                 
                 quickActionCard(
@@ -405,7 +472,13 @@ struct ModernDashboardView: View {
                     subtitle: "Создать вручную",
                     icon: "plus.circle.fill",
                     gradient: [.blue, .cyan],
-                    index: 1
+                    index: 1,
+                    action: {
+                        // Переключиться на таб бронирований
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            self.selectedTab = 2
+                        }
+                    }
                 )
                 
                 quickActionCard(
@@ -413,7 +486,13 @@ struct ModernDashboardView: View {
                     subtitle: "Открыто/Закрыто",
                     icon: "power.circle.fill",
                     gradient: [.orange, .yellow],
-                    index: 2
+                    index: 2,
+                    action: {
+                        // Переключиться на таб профиля для изменения статуса
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            self.selectedTab = 4
+                        }
+                    }
                 )
                 
                 quickActionCard(
@@ -421,15 +500,22 @@ struct ModernDashboardView: View {
                     subtitle: "Получить советы",
                     icon: "brain.head.profile",
                     gradient: [.purple, .pink],
-                    index: 3
+                    index: 3,
+                    action: {
+                        // Переключиться на таб AI
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            self.selectedTab = 3
+                        }
+                    }
                 )
             }
         }
     }
     
-    private func quickActionCard(title: String, subtitle: String, icon: String, gradient: [Color], index: Int) -> some View {
+    private func quickActionCard(title: String, subtitle: String, icon: String, gradient: [Color], index: Int, action: @escaping () -> Void = {}) -> some View {
         Button(action: {
             HapticService.shared.buttonPress()
+            action()
         }) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -768,9 +854,213 @@ struct ModernAIAssistantView: View {
 }
 
 struct ModernRestaurantProfileView: View {
+    let restaurantName: String
+    let restaurantInfo: RestaurantModel?
+    @EnvironmentObject var appState: AppState
+    @State private var showingLogoutAlert = false
+    
     var body: some View {
-        RestaurantOnboardingView()
+        ScrollView {
+            VStack(spacing: 24) {
+                // Заголовок профиля
+                profileHeader
+                
+                // Информация о ресторане
+                restaurantInfoSection
+                
+                // Настройки
+                settingsSection
+                
+                // Кнопка выхода
+                logoutSection
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+        }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.05, blue: 0.15),
+                    Color(red: 0.1, green: 0.08, blue: 0.2)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .alert("Выйти из аккаунта", isPresented: $showingLogoutAlert) {
+            Button("Отмена", role: .cancel) { }
+            Button("Выйти", role: .destructive) {
+                appState.logout()
+            }
+        } message: {
+            Text("Вы уверены, что хотите выйти из аккаунта?")
+        }
     }
+    
+    private var profileHeader: some View {
+        VStack(spacing: 16) {
+            // Аватар ресторана
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [.purple.opacity(0.8), .blue.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 80, height: 80)
+                .overlay(
+                    Image(systemName: "building.2")
+                        .font(.title)
+                        .foregroundColor(.white)
+                )
+            
+            VStack(spacing: 4) {
+                Text("Профиль ресторана")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Text(restaurantName)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.white, .purple.opacity(0.8), .blue.opacity(0.8)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                
+                Text("Управление настройками")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.black.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+    
+    private var restaurantInfoSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Информация о ресторане")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            VStack(spacing: 12) {
+                infoRow(title: "Название", value: restaurantInfo?.name ?? "Не указано")
+                infoRow(title: "Кухня", value: restaurantInfo?.cuisineType.displayName ?? "Не указано")
+                infoRow(title: "Адрес", value: restaurantInfo?.address ?? "Не указано")
+                infoRow(title: "Телефон", value: restaurantInfo?.phoneNumber ?? "Не указано")
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.black.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+    
+    private var settingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Настройки")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            VStack(spacing: 12) {
+                settingsRow(icon: "bell.fill", title: "Уведомления", color: .orange)
+                settingsRow(icon: "location.fill", title: "Геолокация", color: .green)
+                settingsRow(icon: "paintbrush.fill", title: "Тема приложения", color: .purple)
+                settingsRow(icon: "questionmark.circle.fill", title: "Помощь", color: .blue)
+                settingsRow(icon: "gear", title: "Общие настройки", color: .gray)
+                settingsRow(icon: "creditcard", title: "Платежи", color: .green)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.black.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+    
+    private var logoutSection: some View {
+        Button(action: {
+            HapticService.shared.buttonPress()
+            showingLogoutAlert = true
+        }) {
+            HStack {
+                Image(systemName: "power")
+                    .font(.title3)
+                
+                Text("Выйти из аккаунта")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.red.opacity(0.2))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.red, lineWidth: 1)
+                    )
+            )
+        }
+    }
+    
+    private func infoRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+            
+            Spacer()
+            
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+        }
+    }
+    
+    private func settingsRow(icon: String, title: String, color: Color) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
+                .frame(width: 24)
+            
+            Text(title)
+                .font(.subheadline)
+                .foregroundColor(.white)
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .padding(.vertical, 4)
+    }
+    
 }
 
 #Preview {

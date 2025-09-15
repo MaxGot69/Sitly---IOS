@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct BookingDetailView: View {
-    let booking: BookingModel
+    let booking: Booking
     @ObservedObject var viewModel: BookingsViewModel
     @Environment(\.dismiss) private var dismiss
     
@@ -16,7 +16,7 @@ struct BookingDetailView: View {
     @State private var selectedStatus: BookingStatus
     @State private var isUpdating = false
     
-    init(booking: BookingModel, viewModel: BookingsViewModel) {
+    init(booking: Booking, viewModel: BookingsViewModel) {
         self.booking = booking
         self.viewModel = viewModel
         self._selectedStatus = State(initialValue: booking.status)
@@ -25,28 +25,7 @@ struct BookingDetailView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Хедер с информацией о клиенте
-                    clientInfoSection
-                    
-                    // Детали бронирования
-                    bookingDetailsSection
-                    
-                    // Особые пожелания
-                    if let requests = booking.specialRequests, !requests.isEmpty {
-                        specialRequestsSection(requests: requests)
-                    }
-                    
-                    // Финансовая информация
-                    if booking.totalPrice > 0 {
-                        paymentSection
-                    }
-                    
-                    // Управление статусом
-                    statusManagementSection
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                mainContent
             }
             .background(
                 LinearGradient(
@@ -89,6 +68,31 @@ struct BookingDetailView: View {
         }
     }
     
+    private var mainContent: some View {
+        VStack(spacing: 24) {
+            // Хедер с информацией о клиенте
+            clientInfoSection
+            
+            // Детали бронирования
+            bookingDetailsSection
+            
+            // Особые пожелания
+            if let requests = booking.specialRequests, !requests.isEmpty {
+                specialRequestsSection(requests: requests)
+            }
+            
+            // Финансовая информация
+            if booking.totalPrice > 0 {
+                paymentSection
+            }
+            
+            // Управление статусом
+            statusManagementSection
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+    }
+    
     private var clientInfoSection: some View {
         VStack(spacing: 16) {
             // Аватар и имя
@@ -115,7 +119,7 @@ struct BookingDetailView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                     
-                    Text(booking.clientEmail)
+                    Text(booking.clientEmail ?? "Не указан")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                 }
@@ -124,7 +128,7 @@ struct BookingDetailView: View {
             // Контактная информация
             VStack(spacing: 8) {
                 contactRow(icon: "phone.fill", text: booking.clientPhone, color: .green)
-                contactRow(icon: "envelope.fill", text: booking.clientEmail, color: .blue)
+                contactRow(icon: "envelope.fill", text: booking.clientEmail ?? "Не указан", color: .blue)
             }
         }
         .padding(20)
@@ -167,7 +171,7 @@ struct BookingDetailView: View {
                 detailRow(
                     icon: "calendar",
                     title: "Дата",
-                    value: booking.formattedDate,
+                    value: formatDate(booking.date),
                     color: .orange
                 )
                 
@@ -181,7 +185,7 @@ struct BookingDetailView: View {
                 detailRow(
                     icon: "table.furniture",
                     title: "Столик",
-                    value: "\(booking.tableName) (до \(booking.tableCapacity) мест)",
+                    value: "Столик \(booking.tableId)",
                     color: .blue
                 )
                 
@@ -193,10 +197,10 @@ struct BookingDetailView: View {
                 )
                 
                 detailRow(
-                    icon: booking.status.icon,
+                    icon: statusIcon(for: booking.status),
                     title: "Статус",
                     value: booking.status.displayName,
-                    color: booking.status.color
+                    color: statusColor(for: booking.status)
                 )
             }
         }
@@ -252,7 +256,7 @@ struct BookingDetailView: View {
                     icon: "checkmark.circle.fill",
                     title: "Статус оплаты",
                     value: booking.paymentStatus.displayName,
-                    color: booking.paymentStatus.color
+                    color: paymentStatusColor(for: booking.paymentStatus)
                 )
             }
         }
@@ -270,90 +274,7 @@ struct BookingDetailView: View {
     private var statusManagementSection: some View {
         VStack(spacing: 16) {
             sectionHeader(title: "Управление", icon: "gear.circle.fill")
-            
-            VStack(spacing: 12) {
-                // Изменить статус
-                Button(action: {
-                    showingStatusSheet = true
-                    HapticService.shared.buttonPress()
-                }) {
-                    HStack {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.title3)
-                        
-                        Text("Изменить статус")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.white)
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.blue.opacity(0.2))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.blue, lineWidth: 1)
-                            )
-                    )
-                }
-                .disabled(isUpdating)
-                
-                // Быстрые действия
-                if booking.canBeConfirmed || booking.canBeCancelled {
-                    HStack(spacing: 12) {
-                        if booking.canBeConfirmed {
-                            quickActionButton(
-                                title: "Подтвердить",
-                                icon: "checkmark.circle.fill",
-                                color: .green
-                            ) {
-                                updateStatus(to: .confirmed)
-                            }
-                        }
-                        
-                        if booking.canBeCancelled {
-                            quickActionButton(
-                                title: "Отменить",
-                                icon: "xmark.circle.fill",
-                                color: .red
-                            ) {
-                                updateStatus(to: .cancelled)
-                            }
-                        }
-                    }
-                }
-                
-                // Удалить бронирование
-                Button(action: {
-                    deleteBooking()
-                }) {
-                    HStack {
-                        Image(systemName: "trash.fill")
-                            .font(.title3)
-                        
-                        Text("Удалить бронирование")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.red.opacity(0.2))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.red, lineWidth: 1)
-                            )
-                    )
-                }
-                .disabled(isUpdating)
-            }
+            statusButtonsSection
         }
         .padding(20)
         .background(
@@ -364,6 +285,88 @@ struct BookingDetailView: View {
                         .stroke(Color.white.opacity(0.1), lineWidth: 1)
                 )
         )
+    }
+    
+    private var statusButtonsSection: some View {
+        VStack(spacing: 12) {
+            // Изменить статус
+            Button(action: {
+                showingStatusSheet = true
+                HapticService.shared.buttonPress()
+            }) {
+                HStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.title3)
+                    
+                    Text("Изменить статус")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                }
+                .foregroundColor(.white)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.blue.opacity(0.2))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.blue, lineWidth: 1)
+                        )
+                )
+            }
+            .disabled(isUpdating)
+            
+            // Быстрые действия
+            if booking.status == .pending {
+                HStack(spacing: 12) {
+                    quickActionButton(
+                        title: "Подтвердить",
+                        icon: "checkmark.circle.fill",
+                        color: .green
+                    ) {
+                        updateStatus(to: .confirmed)
+                    }
+                    
+                    quickActionButton(
+                        title: "Отменить",
+                        icon: "xmark.circle.fill",
+                        color: .red
+                    ) {
+                        updateStatus(to: .cancelled)
+                    }
+                }
+            }
+            
+            // Удалить бронирование
+            Button(action: {
+                deleteBooking()
+            }) {
+                HStack {
+                    Image(systemName: "trash.fill")
+                        .font(.title3)
+                    
+                    Text("Удалить бронирование")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.red.opacity(0.2))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.red, lineWidth: 1)
+                        )
+                )
+            }
+            .disabled(isUpdating)
+        }
     }
     
     private func sectionHeader(title: String, icon: String) -> some View {
@@ -469,25 +472,62 @@ struct BookingDetailView: View {
 
 #Preview {
     BookingDetailView(
-        booking: BookingModel(
+        booking: Booking(
             restaurantId: "demo-restaurant",
             clientId: "client1",
             tableId: "table1",
             date: Date(),
             timeSlot: "18:00-20:00",
             guests: 2,
-            status: .pending,
+            status: BookingStatus.pending,
             specialRequests: "У окна, пожалуйста. Особые требования к обслуживанию.",
             totalPrice: 2500.0,
-            paymentStatus: .unpaid,
+            paymentStatus: PaymentStatus.unpaid,
             clientName: "Анна Петрова",
             clientPhone: "+7 (999) 123-45-67",
             clientEmail: "anna@example.com",
-            tableName: "Стол 1",
-            tableCapacity: 2,
             createdAt: Date(),
             updatedAt: Date()
         ),
         viewModel: BookingsViewModel()
     )
+}
+
+// MARK: - Helper Functions
+extension BookingDetailView {
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.locale = Locale(identifier: "ru_RU")
+        return formatter.string(from: date)
+    }
+    
+    private func paymentStatusColor(for status: PaymentStatus) -> Color {
+        switch status {
+        case .unpaid: return .red
+        case .paid: return .green
+        case .pending: return .orange
+        case .refunded: return .blue
+        }
+    }
+    
+    private func statusIcon(for status: BookingStatus) -> String {
+        switch status {
+        case .pending: return "clock.fill"
+        case .confirmed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        case .completed: return "checkmark.seal.fill"
+        case .noShow: return "person.crop.circle.badge.xmark"
+        }
+    }
+    
+    private func statusColor(for status: BookingStatus) -> Color {
+        switch status {
+        case .pending: return .orange
+        case .confirmed: return .green
+        case .cancelled: return .red
+        case .completed: return .blue
+        case .noShow: return .gray
+        }
+    }
 }

@@ -30,24 +30,24 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         )
         
         // Сохраняем в локальное хранилище
-        try storageService.save(newReview, forKey: "review_\(newReview.id)")
+        try await storageService.save(newReview, forKey: "review_\(newReview.id)")
         
         // Добавляем в список отзывов ресторана
         var restaurantReviews = try await fetchRestaurantReviews(restaurantId: review.restaurantId)
         restaurantReviews.append(newReview)
-        try storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
+        try await storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
         
         // Добавляем в список отзывов пользователя
         var userReviews = try await fetchUserReviews(userId: review.userId)
         userReviews.append(newReview)
-        try storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
+        try await storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
         
         return newReview
     }
     
     func fetchRestaurantReviews(restaurantId: String) async throws -> [Review] {
         // Получаем из локального хранилища
-        if let reviews: [Review] = try? storageService.load(forKey: "restaurant_reviews_\(restaurantId)") {
+        if let reviews: [Review] = try? await storageService.load([Review].self, forKey: "restaurant_reviews_\(restaurantId)") {
             return reviews
         }
         
@@ -57,7 +57,7 @@ final class ReviewRepository: ReviewRepositoryProtocol {
     
     func fetchUserReviews(userId: String) async throws -> [Review] {
         // Получаем из локального хранилища
-        if let reviews: [Review] = try? storageService.load(forKey: "user_reviews_\(userId)") {
+        if let reviews: [Review] = try? await storageService.load([Review].self, forKey: "user_reviews_\(userId)") {
             return reviews
         }
         
@@ -77,7 +77,7 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         restaurantReviews[reviewIndex] = review
         
         // Обновляем в локальном хранилище
-        try storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
+        try await storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
         
         // Обновляем в списке пользователя
         try await updateReviewInUserList(review)
@@ -93,7 +93,7 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         
         for key in keys {
             if key.hasPrefix("review_") {
-                if let review: Review = try? storageService.load(forKey: key) {
+                if let review: Review = try? await storageService.load(Review.self, forKey: key) {
                     if review.id == id {
                         reviewToDelete = review
                         break
@@ -109,13 +109,13 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         // Удаляем из списка ресторана
         var restaurantReviews = try await fetchRestaurantReviews(restaurantId: review.restaurantId)
         restaurantReviews.removeAll { $0.id == id }
-        try storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
+        try await storageService.save(restaurantReviews, forKey: "restaurant_reviews_\(review.restaurantId)")
         
         // Удаляем из списка пользователя
         try await removeReviewFromUserList(review)
         
         // Удаляем сам отзыв
-        storageService.remove(forKey: "review_\(id)")
+        try await storageService.delete(forKey: "review_\(id)")
     }
     
     // MARK: - Private Methods
@@ -125,7 +125,7 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         
         if let index = userReviews.firstIndex(where: { $0.id == review.id }) {
             userReviews[index] = review
-            try storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
+            try await storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
         }
     }
     
@@ -133,6 +133,6 @@ final class ReviewRepository: ReviewRepositoryProtocol {
         var userReviews = try await fetchUserReviews(userId: review.userId)
         
         userReviews.removeAll { $0.id == review.id }
-        try storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
+        try await storageService.save(userReviews, forKey: "user_reviews_\(review.userId)")
     }
 }

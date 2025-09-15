@@ -40,7 +40,7 @@ struct BookingHistoryView: View {
                     // Контент
                     if viewModel.isLoading {
                         loadingView
-                    } else if viewModel.filteredBookingModels.isEmpty {
+                    } else if viewModel.filteredBookings.isEmpty {
                         emptyStateView
                     } else {
                         bookingsListView
@@ -52,11 +52,11 @@ struct BookingHistoryView: View {
         .onAppear {
             startAnimations()
             Task {
-                await viewModel.loadBookingModels()
+                await viewModel.loadBookings()
             }
         }
         .refreshable {
-            await viewModel.refreshBookingModels()
+            await viewModel.refreshBookings()
         }
     }
     
@@ -121,7 +121,7 @@ struct BookingHistoryView: View {
                         isSelected: viewModel.selectedFilter == filter,
                         action: {
                             viewModel.selectedFilter = filter
-                            viewModel.filterBookingModels(by: filter)
+                            viewModel.filterBookings(by: filter)
                         }
                     )
                 }
@@ -197,7 +197,7 @@ struct BookingHistoryView: View {
     private var bookingsListView: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                ForEach(Array(viewModel.filteredBookingModels.enumerated()), id: \.element.id) { index, booking in
+                ForEach(Array(viewModel.filteredBookings.enumerated()), id: \.element.id) { index, booking in
                     BookingCard(booking: booking, restaurant: viewModel.getRestaurant(for: booking))
                         .opacity(animateContent ? 1 : 0)
                         .offset(y: animateContent ? 0 : 30)
@@ -248,57 +248,66 @@ struct FilterChip: View {
 }
 
 struct BookingCard: View {
-    let booking: BookingModel
+    let booking: Booking
     let restaurant: Restaurant?
     @State private var isPressed = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Заголовок с рестораном
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(restaurant?.name ?? "Неизвестный ресторан")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Text(restaurant?.cuisineType.displayName ?? "Кухня")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.gray)
-                }
+        bookingCardContent
+    }
+    
+    private var headerSection: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(restaurant?.name ?? "Неизвестный ресторан")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
                 
-                Spacer()
-                
-                // Статус
-                StatusBadge(status: booking.status)
+                Text(restaurant?.cuisineType.displayName ?? "Кухня")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.gray)
             }
             
-            // Детали бронирования
-            VStack(spacing: 12) {
-                BookingModelDetailRow(
-                    icon: "calendar",
-                    title: "Дата",
-                    value: formatDate(booking.date)
-                )
-                
-                BookingModelDetailRow(
-                    icon: "clock",
-                    title: "Время",
-                    value: booking.timeSlot
-                )
-                
-                BookingModelDetailRow(
-                    icon: "person.2",
-                    title: "Гостей",
-                    value: "\(booking.guests) чел."
-                )
-                
-                BookingModelDetailRow(
-                    icon: "chair.lounge",
-                    title: "Столик",
-                    value: booking.tableName
-                )
-            }
+            Spacer()
+            
+            // Статус
+            StatusBadge(status: booking.status)
+        }
+    }
+    
+    private var detailsSection: some View {
+        VStack(spacing: 12) {
+            BookingDetailRow(
+                icon: "calendar",
+                title: "Дата",
+                value: formatDate(booking.date)
+            )
+            
+            BookingDetailRow(
+                icon: "clock",
+                title: "Время",
+                value: booking.timeSlot
+            )
+            
+            BookingDetailRow(
+                icon: "person.2",
+                title: "Гостей",
+                value: "\(booking.guests) чел."
+            )
+            
+            BookingDetailRow(
+                icon: "chair.lounge",
+                title: "Столик",
+                value: "Столик \(booking.tableId)"
+            )
+        }
+    }
+    
+    private var bookingCardContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            headerSection
+            detailsSection
             
             // Специальные пожелания
             if let requests = booking.specialRequests, !requests.isEmpty {
@@ -350,7 +359,7 @@ struct BookingCard: View {
     }
 }
 
-struct BookingModelDetailRow: View {
+struct BookingDetailRow: View {
     let icon: String
     let title: String
     let value: String
@@ -496,8 +505,8 @@ extension BookingStatus {
 
 @MainActor
 class BookingHistoryViewModel: ObservableObject {
-    @Published var bookings: [BookingModel] = []
-    @Published var filteredBookingModels: [BookingModel] = []
+    @Published var bookings: [Booking] = []
+    @Published var filteredBookings: [Booking] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedFilter: BookingFilter = .all
@@ -525,7 +534,7 @@ class BookingHistoryViewModel: ObservableObject {
         
         // Загружаем начальные данные
         Task {
-            await loadBookingModels()
+            await loadBookings()
         }
     }
     
@@ -548,7 +557,7 @@ class BookingHistoryViewModel: ObservableObject {
         }
     }
     
-    private func updateBookingsFromRealtime(_ restaurantBookings: [BookingModel], restaurantId: String) {
+    private func updateBookingsFromRealtime(_ restaurantBookings: [Booking], restaurantId: String) {
         // Фильтруем только бронирования текущего пользователя
         let userId = "demo-client" // В реальном приложении здесь был бы ID текущего пользователя
         let userBookings = restaurantBookings.filter { $0.clientId == userId }
@@ -561,12 +570,12 @@ class BookingHistoryViewModel: ObservableObject {
         bookings = updatedBookings.sorted { $0.date > $1.date }
         
         // Применяем текущий фильтр
-        filterBookingModels(by: selectedFilter)
+        filterBookings(by: selectedFilter)
         
         print("🔄 Обновлены бронирования в реальном времени: \(userBookings.count) новых")
     }
     
-    func loadBookingModels() async {
+    func loadBookings() async {
         isLoading = true
         errorMessage = nil
         
@@ -578,7 +587,7 @@ class BookingHistoryViewModel: ObservableObject {
             // Пока используем демо-пользователя
             let userId = "demo-client" // В реальном приложении здесь был бы ID текущего пользователя
             bookings = try await loadUserBookings(userId: userId)
-            filteredBookingModels = bookings
+            filteredBookings = bookings
             
             print("✅ Загружено бронирований: \(bookings.count)")
         } catch {
@@ -589,9 +598,9 @@ class BookingHistoryViewModel: ObservableObject {
         isLoading = false
     }
     
-    private func loadUserBookings(userId: String) async throws -> [BookingModel] {
+    private func loadUserBookings(userId: String) async throws -> [Booking] {
         // Загружаем бронирования из всех ресторанов для пользователя
-        var allBookings: [BookingModel] = []
+        var allBookings: [Booking] = []
         
         for restaurant in restaurants {
             do {
@@ -608,31 +617,31 @@ class BookingHistoryViewModel: ObservableObject {
         return allBookings.sorted { $0.date > $1.date }
     }
     
-    func refreshBookingModels() async {
-        await loadBookingModels()
+    func refreshBookings() async {
+        await loadBookings()
     }
     
-    func filterBookingModels(by filter: BookingFilter) {
+    func filterBookings(by filter: BookingFilter) {
         switch filter {
         case .all:
-            filteredBookingModels = bookings
+            filteredBookings = bookings
         case .upcoming:
-            filteredBookingModels = bookings.filter { booking in
+            filteredBookings = bookings.filter { booking in
                 booking.date > Date() && (booking.status == .pending || booking.status == .confirmed)
             }
         case .completed:
-            filteredBookingModels = bookings.filter { $0.status == .completed }
+            filteredBookings = bookings.filter { $0.status == .completed }
         case .cancelled:
-            filteredBookingModels = bookings.filter { $0.status == .cancelled }
+            filteredBookings = bookings.filter { $0.status == .cancelled }
         }
     }
     
-    func getRestaurant(for booking: BookingModel) -> Restaurant? {
+    func getRestaurant(for booking: Booking) -> Restaurant? {
         // Restaurant.id и booking.restaurantId оба String
         return restaurants.first { $0.id == booking.restaurantId }
     }
     
-    private func getMockBookingModels() -> [BookingModel] {
+    private func getMockBookings() -> [Booking] {
         // Моки отключены. Используем реальные данные из UseCase.
         return []
     }

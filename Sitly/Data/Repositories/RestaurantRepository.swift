@@ -147,6 +147,26 @@ class RestaurantRepository: RestaurantRepositoryProtocol {
         }
     }
     
+    func updateRestaurant(_ restaurant: Restaurant) async throws {
+        do {
+            print("🔥 RestaurantRepository: Обновляем ресторан \(restaurant.id)")
+            let _: Restaurant = try await networkService.request(FirebaseEndpoint.updateRestaurant(restaurant))
+            
+            // Обновляем кэш
+            if var cached: [Restaurant] = await cacheService.load(forKey: "restaurants") {
+                if let index = cached.firstIndex(where: { $0.id == restaurant.id }) {
+                    cached[index] = restaurant
+                    await cacheService.save(cached, forKey: "restaurants", expiration: 300)
+                }
+            }
+            
+            print("✅ RestaurantRepository: Ресторан \(restaurant.id) обновлен")
+        } catch {
+            print("❌ RestaurantRepository: Ошибка обновления ресторана: \(error)")
+            throw error
+        }
+    }
+    
     private func calculateDistance(from: CLLocation, to: CLLocation) -> Double {
         return from.distance(from: to) / 1000 // Convert to kilometers
     }

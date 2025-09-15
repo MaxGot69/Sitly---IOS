@@ -9,6 +9,7 @@ protocol RestaurantRepositoryProtocol {
     func searchRestaurants(query: String) async throws -> [Restaurant]
     func fetchRestaurantsByCuisine(_ cuisine: String) async throws -> [Restaurant]
     func fetchNearbyRestaurants(latitude: Double, longitude: Double, radius: Double) async throws -> [Restaurant]
+    func updateRestaurant(_ restaurant: Restaurant) async throws
 }
 
 protocol UserRepositoryProtocol {
@@ -22,11 +23,11 @@ protocol UserRepositoryProtocol {
 }
 
 protocol BookingRepositoryProtocol {
-    func createBooking(_ booking: BookingModel) async throws -> BookingModel
-    func fetchUserBookings(userId: String) async throws -> [BookingModel]
-    func fetchRestaurantBookings(restaurantId: String) async throws -> [BookingModel]
-    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> BookingModel
-    func cancelBooking(bookingId: String) async throws -> BookingModel
+    func createBooking(_ booking: Booking) async throws -> Booking
+    func fetchUserBookings(userId: String) async throws -> [Booking]
+    func fetchRestaurantBookings(restaurantId: String) async throws -> [Booking]
+    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> Booking
+    func cancelBooking(bookingId: String) async throws -> Booking
     func checkAvailability(restaurantId: String, date: Date, time: String) async throws -> Bool
 }
 
@@ -75,18 +76,18 @@ protocol BookingUseCaseProtocol {
         tableType: TableType,
         specialRequests: String?,
         contactPhone: String
-    ) async throws -> BookingModel
+    ) async throws -> Booking
     
-    func getUserBookings(userId: String) async throws -> [BookingModel]
-    func getRestaurantBookings(restaurantId: String) async throws -> [BookingModel]
-    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> BookingModel
-    func cancelBooking(bookingId: String) async throws -> BookingModel
+    func getUserBookings(userId: String) async throws -> [Booking]
+    func getRestaurantBookings(restaurantId: String) async throws -> [Booking]
+    func updateBookingStatus(bookingId: String, status: BookingStatus) async throws -> Booking
+    func cancelBooking(bookingId: String) async throws -> Booking
     func checkAvailability(restaurantId: String, date: Date, time: String) async throws -> Bool
-    func getUpcomingBookings(userId: String) async throws -> [BookingModel]
-    func getPastBookings(userId: String) async throws -> [BookingModel]
-    func getBookingsByStatus(userId: String, status: BookingStatus) async throws -> [BookingModel]
-    func getBookingsForDate(userId: String, date: Date) async throws -> [BookingModel]
-    func canModifyBooking(_ booking: BookingModel) -> Bool
+    func getUpcomingBookings(userId: String) async throws -> [Booking]
+    func getPastBookings(userId: String) async throws -> [Booking]
+    func getBookingsByStatus(userId: String, status: BookingStatus) async throws -> [Booking]
+    func getBookingsForDate(userId: String, date: Date) async throws -> [Booking]
+    func canModifyBooking(_ booking: Booking) -> Bool
     func getAvailableTimeSlots(restaurantId: String, date: Date) async throws -> [String]
     func getAvailableTableTypes(restaurantId: String, date: Date, time: String) async throws -> [TableType]
 }
@@ -124,13 +125,7 @@ protocol NetworkServiceProtocol {
     func upload<T: Codable>(_ data: Data, to endpoint: APIEndpoint) async throws -> T
 }
 
-protocol StorageServiceProtocol {
-    func save<T: Codable>(_ object: T, forKey key: String) throws
-    func save<T: Codable>(_ object: T, forKey key: String, expiration: TimeInterval) throws
-    func load<T: Codable>(forKey key: String) throws -> T?
-    func remove(forKey key: String)
-    func clear()
-}
+// StorageServiceProtocol moved to StorageService.swift to avoid duplication
 
 
 

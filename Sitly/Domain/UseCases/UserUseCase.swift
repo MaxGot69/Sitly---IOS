@@ -17,8 +17,8 @@ final class UserUseCase: UserUseCaseProtocol {
             let user = try await repository.authenticateUser(email: email, password: password)
             
             // Сохраняем данные пользователя локально
-            try storageService.save(user, forKey: "currentUser")
-            try storageService.save(rememberMe, forKey: "rememberMe")
+            try await storageService.save(user, forKey: "currentUser")
+            try await storageService.save(rememberMe, forKey: "rememberMe")
             
             return true
         } catch {
@@ -41,7 +41,7 @@ final class UserUseCase: UserUseCaseProtocol {
             let user = try await repository.registerUser(email: email, password: password, name: name)
             
             // Сохраняем пользователя локально
-            try storageService.save(user, forKey: "currentUser")
+            try await storageService.save(user, forKey: "currentUser")
             
             // Автоматически входим после регистрации
             return true
@@ -55,7 +55,7 @@ final class UserUseCase: UserUseCaseProtocol {
             let user = try await repository.registerUserWithRole(email: email, password: password, name: name, role: role)
             
             // Сохраняем пользователя локально
-            try storageService.save(user, forKey: "currentUser")
+            try await storageService.save(user, forKey: "currentUser")
             
             return user
         } catch {
@@ -70,13 +70,13 @@ final class UserUseCase: UserUseCaseProtocol {
     
     func logout() async throws {
         // Очищаем локальные данные
-        storageService.remove(forKey: "currentUser")
-        storageService.remove(forKey: "rememberMe")
+        try await storageService.delete(forKey: "currentUser")
+        try await storageService.delete(forKey: "rememberMe")
     }
     
     func validateSession() async throws -> Bool {
         // Проверяем локальные данные
-        guard let _: User = try? storageService.load(forKey: "currentUser") else {
+        guard let _: User = try? await storageService.load(User.self, forKey: "currentUser") else {
             return false
         }
         return true
@@ -89,7 +89,7 @@ final class UserUseCase: UserUseCaseProtocol {
     
     func getUserProfile() async throws -> User {
         // Сначала пытаемся получить из локального хранилища
-        if let user: User = try? storageService.load(forKey: "currentUser") {
+        if let user: User = try? await storageService.load(User.self, forKey: "currentUser") {
             return user
         }
         
@@ -112,7 +112,7 @@ final class UserUseCase: UserUseCaseProtocol {
         )
         
         // Сохраняем локально для будущего использования
-        try? storageService.save(demoUser, forKey: "currentUser")
+        try? await storageService.save(demoUser, forKey: "currentUser")
         
         return demoUser
     }
@@ -142,7 +142,7 @@ final class UserUseCase: UserUseCaseProtocol {
     }
     
     func setRememberMe(_ enabled: Bool) async throws {
-        try storageService.save(enabled, forKey: "rememberMe")
+        try await storageService.save(enabled, forKey: "rememberMe")
     }
     
     // MARK: - Repository Methods (для совместимости)

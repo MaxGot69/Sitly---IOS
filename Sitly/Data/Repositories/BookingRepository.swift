@@ -19,24 +19,24 @@ final class BookingRepository: BookingRepositoryProtocol {
         var newBooking = booking
         newBooking.id = UUID().uuidString        
         // Сохраняем в локальное хранилище
-        try storageService.save(newBooking, forKey: "booking_\(newBooking.id)")
+        try await storageService.save(newBooking, forKey: "booking_\(newBooking.id)")
         
         // Добавляем в список бронирований пользователя
         var userBookings = try await fetchUserBookings(userId: booking.clientId)
         userBookings.append(newBooking)
-        try storageService.save(userBookings, forKey: "user_bookings_\(booking.clientId)")
+        try await storageService.save(userBookings, forKey: "user_bookings_\(booking.clientId)")
         
         // Добавляем в список бронирований ресторана
         var restaurantBookings = try await fetchRestaurantBookings(restaurantId: booking.restaurantId)
         restaurantBookings.append(newBooking)
-        try storageService.save(restaurantBookings, forKey: "restaurant_bookings_\(booking.restaurantId)")
+        try await storageService.save(restaurantBookings, forKey: "restaurant_bookings_\(booking.restaurantId)")
         
         return newBooking
     }
     
     func fetchUserBookings(userId: String) async throws -> [Booking] {
         // Получаем из локального хранилища
-        if let bookings: [Booking] = try? storageService.load(forKey: "user_bookings_\(userId)") {
+        if let bookings: [Booking] = try? await storageService.load([Booking].self, forKey: "user_bookings_\(userId)") {
             return bookings
         }
         
@@ -46,7 +46,7 @@ final class BookingRepository: BookingRepositoryProtocol {
     
     func fetchRestaurantBookings(restaurantId: String) async throws -> [Booking] {
         // Получаем из локального хранилища
-        if let bookings: [Booking] = try? storageService.load(forKey: "restaurant_bookings_\(restaurantId)") {
+        if let bookings: [Booking] = try? await storageService.load([Booking].self, forKey: "restaurant_bookings_\(restaurantId)") {
             return bookings
         }
         
@@ -68,7 +68,7 @@ final class BookingRepository: BookingRepositoryProtocol {
         updatedBooking.updatedAt = Date()
         
         // Обновляем в локальном хранилище
-        try storageService.save(updatedBooking, forKey: "booking_\(bookingId)")
+        try await storageService.save(updatedBooking, forKey: "booking_\(bookingId)")
         
         // Обновляем в списках пользователя и ресторана
         try await updateBookingInLists(updatedBooking)
@@ -116,14 +116,14 @@ final class BookingRepository: BookingRepositoryProtocol {
         var userBookings = try await fetchUserBookings(userId: booking.clientId)
         if let index = userBookings.firstIndex(where: { $0.id == booking.id }) {
             userBookings[index] = booking
-            try storageService.save(userBookings, forKey: "user_bookings_\(booking.clientId)")
+            try await storageService.save(userBookings, forKey: "user_bookings_\(booking.clientId)")
         }
         
         // Обновляем в списке ресторана
         var restaurantBookings = try await fetchRestaurantBookings(restaurantId: booking.restaurantId)
         if let index = restaurantBookings.firstIndex(where: { $0.id == booking.id }) {
             restaurantBookings[index] = booking
-            try storageService.save(restaurantBookings, forKey: "restaurant_bookings_\(booking.restaurantId)")
+            try await storageService.save(restaurantBookings, forKey: "restaurant_bookings_\(booking.restaurantId)")
         }
     }
 }

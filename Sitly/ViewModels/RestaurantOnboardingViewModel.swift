@@ -77,6 +77,13 @@ class RestaurantOnboardingViewModel: ObservableObject {
     // MARK: - Restaurant Creation
     func createRestaurant(userId: String) async {
         print("🏢 RestaurantOnboardingViewModel: НАЧАЛО СОЗДАНИЯ РЕСТОРАНА")
+        print("🏢 Данные ресторана:")
+        print("🏢 - Название: \(restaurantName)")
+        print("🏢 - Описание: \(description)")
+        print("🏢 - Кухня: \(selectedCuisine)")
+        print("🏢 - Адрес: \(fullAddress)")
+        print("🏢 - Телефон: \(phoneNumber)")
+        print("🏢 - Пользователь: \(userId)")
         
         isLoading = true
         errorMessage = nil
@@ -98,6 +105,8 @@ class RestaurantOnboardingViewModel: ObservableObject {
                 ownerId: userId,
                 status: .pending // Ресторан на модерации
             )
+            
+            print("🏢 Модель ресторана создана: \(restaurant)")
             
             // Сохраняем в Firebase
             let createdRestaurant = try await restaurantService.createRestaurant(restaurant)
@@ -164,6 +173,7 @@ struct RestaurantModel: Codable, Identifiable {
     let cuisineType: CuisineType
     let address: String
     let coordinates: CLLocationCoordinate2D
+    
     let phoneNumber: String
     let priceRange: PriceRange
     let workingHours: WorkingHours
@@ -223,12 +233,27 @@ class RestaurantService: RestaurantServiceProtocol {
         print("🔥 Сохраняем ресторан в Firebase: \(restaurant.name)")
         
         do {
-            // Кодируем данные ресторана
-            let jsonData = try JSONEncoder().encode(restaurant)
-            var restaurantData = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] ?? [:]
-            
-            // Убираем id, чтобы использовать кастомный
-            restaurantData.removeValue(forKey: "id")
+            // Создаем данные вручную, чтобы избежать проблем с CLLocationCoordinate2D
+            var restaurantData: [String: Any] = [
+                "id": restaurant.id,
+                "name": restaurant.name,
+                "description": restaurant.description,
+                "cuisineType": restaurant.cuisineType.rawValue,
+                "address": restaurant.address,
+                "latitude": restaurant.coordinates.latitude,
+                "longitude": restaurant.coordinates.longitude,
+                "phoneNumber": restaurant.phoneNumber,
+                "priceRange": restaurant.priceRange.rawValue,
+                "ownerId": restaurant.ownerId,
+                "status": restaurant.status.rawValue,
+                "rating": restaurant.rating,
+                "reviewCount": restaurant.reviewCount,
+                "photos": restaurant.photos,
+                "isOpen": restaurant.isOpen,
+                "isVerified": restaurant.isVerified,
+                "website": restaurant.website ?? "",
+                "features": restaurant.features.map { $0.rawValue }
+            ]
             
             // Добавляем timestamps
             restaurantData["createdAt"] = FieldValue.serverTimestamp()
@@ -238,6 +263,17 @@ class RestaurantService: RestaurantServiceProtocol {
             try await db.collection("restaurants").document(restaurant.id).setData(restaurantData)
             
             print("✅ Ресторан сохранен в Firebase с ID: \(restaurant.id)")
+            print("✅ Данные для сохранения: \(restaurantData)")
+            
+            // Проверяем что действительно сохранилось
+            let savedDoc = try await db.collection("restaurants").document(restaurant.id).getDocument()
+            if savedDoc.exists {
+                print("✅ Подтверждено: документ существует в Firebase")
+                print("✅ Сохраненные данные: \(savedDoc.data() ?? [:])")
+            } else {
+                print("❌ ОШИБКА: документ не найден после сохранения!")
+            }
+            
             return restaurant
             
         } catch {
